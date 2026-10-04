@@ -236,6 +236,13 @@ class CUDAHeat:
             retries = 0
             while True:
                 point_stop = point_start + current_size
+                logger.info(
+                    "Processing spatial points %d:%d with all %d time steps on GPU %d",
+                    point_start,
+                    point_stop,
+                    self.ntime,
+                    self.device_id,
+                )
                 cpu_values = self._load_spatial_batch(point_start, point_stop)
                 try:
                     output, batch_telemetry = self._execute_gpu_batch(
@@ -265,6 +272,16 @@ class CUDAHeat:
                 if on_batch is not None:
                     on_batch(completed)
                 telemetry.append(batch_telemetry)
+                logger.info(
+                    "Completed points %d:%d: transfer %.3fs + GPU %.3fs + return %.3fs; "
+                    "sampled peak %.2f GiB",
+                    point_start,
+                    point_stop,
+                    batch_telemetry.transfer_to_device_seconds,
+                    batch_telemetry.gpu_compute_seconds,
+                    batch_telemetry.transfer_from_device_seconds,
+                    batch_telemetry.peak_used_bytes / 2**30,
+                )
                 point_start = point_stop
                 break
 

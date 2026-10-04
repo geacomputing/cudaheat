@@ -12,6 +12,7 @@ license = { text = "MIT" }
 authors = [{ name = "GEA Computing" }]
 dependencies = [
   "numpy>=1.26",
+  "scipy>=1.11",
   "xarray>=2024.1",
 ]
 

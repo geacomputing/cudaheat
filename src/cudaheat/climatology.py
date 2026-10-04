@@ -165,11 +165,25 @@ def _nanpercentile_by_bin_gpu(
     gives the same definition as the CPU reference.
     """
     result = cp.full((nbins, values.shape[1]), cp.nan, dtype=values.dtype)
-    # Bins are CPU-created integer metadata.  The loop schedules independent GPU
-    # percentile reductions and retains the complete series for every point.
-    for bin_id in cp.asnumpy(cp.unique(bins)):
-        rows = bins == bin_id
-        result[int(bin_id)] = _nanpercentile_gpu(values[rows], percentile, cp)
+    # The number of samples in an hourly climatology bin is normally the number
+    # of baseline years (small), while the number of bins is 8,784.  Tiling bins
+    # avoids one GPU launch per hour-of-year without materialising all bins at
+    # once. Every gather still contains complete series from the input batch.
+    bins_cpu = cp.asnumpy(bins)
+    populated_bins = np.unique(bins_cpu)
+    tile_size = 256
+    for tile_start in range(0, populated_bins.size, tile_size):
+        tile_bins = populated_bins[tile_start : tile_start + tile_size]
+        row_lists = [np.flatnonzero(bins_cpu == bin_id) for bin_id in tile_bins]
+        max_rows = max(rows.size for rows in row_lists)
+        gather_indices = np.zeros((tile_bins.size, max_rows), dtype=np.intp)
+        present = np.zeros((tile_bins.size, max_rows), dtype=bool)
+        for row, indices in enumerate(row_lists):
+            gather_indices[row, : indices.size] = indices
+            present[row, : indices.size] = True
+        grouped = values[cp.asarray(gather_indices)]
+        grouped = cp.where(cp.asarray(present)[..., None], grouped, cp.nan)
+        result[cp.asarray(tile_bins)] = _nanpercentile_grouped_gpu(grouped, percentile, cp)
     return result
 
 
@@ -183,6 +197,23 @@ def _nanpercentile_gpu(values: Any, percentile: float, cp: Any) -> Any:
     upper_index = cp.maximum(cp.ceil(rank).astype(cp.intp), 0)
     lower = cp.take_along_axis(sorted_values, lower_index[None, :], axis=0)[0]
     upper = cp.take_along_axis(sorted_values, upper_index[None, :], axis=0)[0]
+    lower = cp.where(counts > 0, lower, 0)
+    upper = cp.where(counts > 0, upper, 0)
+    fraction = rank - cp.floor(rank)
+    percentile_values = lower + (upper - lower) * fraction
+    return cp.where(counts > 0, percentile_values, cp.nan)
+
+
+def _nanpercentile_grouped_gpu(values: Any, percentile: float, cp: Any) -> Any:
+    """Linear NaN percentile for ``(bin, baseline_sample, point)`` values."""
+    valid = ~cp.isnan(values)
+    counts = cp.sum(valid, axis=1)
+    sorted_values = cp.sort(cp.where(valid, values, cp.inf), axis=1)
+    rank = (counts - 1) * percentile
+    lower_index = cp.maximum(cp.floor(rank).astype(cp.intp), 0)
+    upper_index = cp.maximum(cp.ceil(rank).astype(cp.intp), 0)
+    lower = cp.take_along_axis(sorted_values, lower_index[:, None, :], axis=1)[:, 0, :]
+    upper = cp.take_along_axis(sorted_values, upper_index[:, None, :], axis=1)[:, 0, :]
     lower = cp.where(counts > 0, lower, 0)
     upper = cp.where(counts > 0, upper, 0)
     fraction = rank - cp.floor(rank)
