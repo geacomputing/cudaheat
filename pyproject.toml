@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cudaheat"
+version = "0.1.0"
+description = "GPU-native, out-of-core hourly marine heatwave preprocessing"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "GEA Computing" }]
+dependencies = [
+  "numpy>=1.26",
+  "xarray>=2024.1",
+]
+
+[project.optional-dependencies]
+gpu = ["cupy-cuda12x>=13.0"]
+benchmark = ["matplotlib>=3.8"]
+test = ["pytest>=8", "h5netcdf>=1.3", "h5py>=3.10"]
+dev = ["cudaheat[gpu,benchmark,test]"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cudaheat"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
