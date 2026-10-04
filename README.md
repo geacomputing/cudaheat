@@ -16,8 +16,9 @@ Time is scientifically indivisible; space is computationally divisible. CUDAHeat
 - Configurable 30% free-VRAM safety reserve.
 - Explicit `float32` default or `float64` processing.
 - NaN-aware hourly calendar-bin climatology, percentile thresholds, circular smoothing, anomaly, excess, and GPU exceedance mask.
-- Per-batch CUDA-event compute, transfer, OOM-retry, and VRAM telemetry.
-- Separate benchmark utilities with CSV/JSON export and Matplotlib plots.
+- Per-batch host-read, preparation, allocation, transfer, CUDA-event compute, result-assembly, OOM-retry, and VRAM telemetry.
+- Explicit preallocated device-buffer transfers, avoiding an unnecessary host/device conversion in the H2D path.
+- Separate benchmark utilities with CSV/JSON export, a timestamped campaign runner, and high-resolution Matplotlib figures (PNG/PDF/SVG).
 
 The climatological cycle has 366 × 24 month/day/hour bins. Smoothing is circular and NaN-aware. NetCDF I/O stays on CPU through Xarray; CuPy performs GPU calculations. The `kernels` namespace is reserved for future profiling-justified CUDA event-detection kernels.
 
@@ -84,6 +85,42 @@ python benchmarks/benchmark_real_data.py sst.nc \
 
 Outputs default to `benchmark-results/`; use `--output-dir` to select another
 location. No multi-GPU performance result is generated until multi-GPU execution exists.
+
+For a complete validation, dense scaling, batch-size, precision, figure, and
+report campaign on a real dataset:
+
+```bash
+python benchmarks/run_real_data_campaign.py /path/to/sst.nc \
+  --variable analysed_sst --baseline 2019 2025 \
+  --percentile 0.90 --smooth-window-hours 120
+```
+
+Each campaign writes a non-overwriting timestamped directory containing raw
+CSV/JSON repetitions, summaries, validation JSON, a Markdown report, and 12
+large PNG/PDF/SVG figures. Warm-ups are excluded from the stored results.
+
+## Measured real-data result
+
+On an NVIDIA GeForce RTX 4070 Laptop GPU, CUDAHeat processed the provided
+7-year `analysed_sst` dataset (64,080 hours × 18,055 points; 1.157 billion SST
+values) without splitting time. These are mean float32-GPU / float64-CPU
+measurements from the dense campaign:
+
+| Metric | Measured result |
+| --- | ---: |
+| CPU float64 compute | 123.10 s |
+| GPU float32 compute | 5.26 s |
+| GPU float32 device end-to-end | 5.63 s |
+| Complete GPU pipeline wall time | 7.73 s |
+| Compute / device end-to-end speedup | 23.40× / 21.88× |
+| Automatic batch / peak VRAM | 2,276 points / 5.33 GiB |
+
+The explicit transfer path reduced measured H2D time from 4.924 s to 0.353 s
+(14.0×); GPU computation is now the dominant device cost. GPU32 validation at
+500 points across seeds 0, 42, and 123 retained at least 99.99911985% mask
+agreement; a 1,000-point run retained 99.99911205%. GPU64 at 500 points
+retained 99.99973783% agreement. Differences were threshold-boundary cases;
+no NaN-location disagreements were observed.
 
 ## Roadmap
 
