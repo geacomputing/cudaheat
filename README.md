@@ -49,15 +49,41 @@ with CUDAHeat("sst.nc", variable="analysed_sst", dtype="float32", vram_safety=0.
 
 `cudaheat.climatology.cpu_pre_event_fields` is the NumPy reference used for CPU/GPU tests, including NaNs and float32 tolerances. Run tests with `pytest`.
 
+Targeted validation keeps every time step for a seeded selection of valid ocean
+points. It compares CPU float64 with GPU float32 (or float64) for raw and
+smoothed climatology/thresholds, anomaly, excess, mask, and exceedance counts.
+It returns a `ValidationResult` with numerical, NaN, threshold-boundary, and
+count diagnostics, and can write JSON without large arrays.
+
+```bash
+python examples/validate_real_data.py sst.nc \
+  --variable analysed_sst --baseline 2019 2025 --points 50
+```
+
+Use `--full-dataset` only for the optional full spatial validation; it still
+batches space only and keeps every time series complete.
+
 ```python
 from cudaheat.benchmark import CUDAHeatBenchmark
 
 benchmark = CUDAHeatBenchmark(hw)
-benchmark.run(repeats=3)
+benchmark.run(repeats=3, warmup=1, point_counts=[100, 1000], gpu_dtypes=["float32"])
 benchmark.export_json("benchmark-results/run.json")
 ```
 
-Benchmarks retain real repeat measurements only. GPU compute timing uses CUDA events and is distinct from transfer and end-to-end timing.
+Benchmarks retain real repeat measurements only. They separately report CPU
+compute, host-to-device transfer, CUDA-event GPU compute, device-to-host
+transfer, end-to-end timing, both speedups, throughput, and batch telemetry.
+Spatial and controlled-batch scaling never shorten time. Use the real-data CLI
+to create CSV, JSON, and actual-measurement Matplotlib plots:
+
+```bash
+python benchmarks/benchmark_real_data.py sst.nc \
+  --variable analysed_sst --baseline 2019 2025 --dtype float32 --repeats 3
+```
+
+Outputs default to `benchmark-results/`; use `--output-dir` to select another
+location. No multi-GPU performance result is generated until multi-GPU execution exists.
 
 ## Roadmap
 

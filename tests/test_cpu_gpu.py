@@ -8,8 +8,10 @@ if cp.cuda.runtime.getDeviceCount() < 1:  # pragma: no cover - hardware dependen
     pytest.skip("CUDA device unavailable", allow_module_level=True)
 
 from cudaheat.climatology import cpu_pre_event_fields, gpu_pre_event_fields, hourly_climatology_index
+from cudaheat.benchmark import CUDAHeatBenchmark
 from cudaheat.core import BatchOutput, CUDAHeat
 from cudaheat.memory import BatchTelemetry
+from cudaheat.validation import select_validation_points
 
 
 def test_gpu_matches_cpu_reference_with_nan_and_float32(synthetic_sst):
@@ -32,10 +34,11 @@ def test_engine_stacks_space_preserves_all_time_and_returns_mask(synthetic_sst):
         assert batch.shape == (hw.ntime, 2)
         assert batch.dtype == np.float32
 
-        result = hw.run(smooth_window_hours=3, return_fields={"mask"})
+        result = hw.run(smooth_window_hours=3, return_fields={"mask", "threshold_raw"})
         assert result.metadata["time_was_split"] is False
         assert result.data["mask"].dims == ("time", "lat", "lon")
         assert result.data["mask"].dtype == bool
+        assert result.data["threshold_raw"].dims == ("climatology_hour", "lat", "lon")
         assert len(result.telemetry) >= 1
 
 
@@ -78,3 +81,33 @@ def test_engine_retries_same_full_time_range_with_smaller_spatial_batch(syntheti
     assert calls[1][:2] == (0, hw.npoints // 2)
     assert calls[0][2][0] == calls[1][2][0] == hw.ntime
     assert result.metadata["time_was_split"] is False
+
+
+def test_targeted_validation_selection_is_seeded_and_keeps_complete_time(synthetic_sst):
+    with CUDAHeat(synthetic_sst, variable="analysed_sst") as hw:
+        first = select_validation_points(hw, points=3, random_seed=17)
+        second = select_validation_points(hw, points=3, random_seed=17)
+        result = hw.validate(points=3, random_seed=17, smooth_window_hours=3)
+
+    np.testing.assert_array_equal(first, second)
+    assert result.ntime == synthetic_sst.sizes["time"]
+    assert len(result.point_indices) == 3
+    assert result.mask.total_elements == result.ntime * 3
+    assert result.exceedance_count.total_points == 3
+
+
+def test_benchmark_runs_repeats_with_complete_time_series(synthetic_sst):
+    with CUDAHeat(synthetic_sst, variable="analysed_sst") as hw:
+        benchmark = CUDAHeatBenchmark(hw)
+        records = benchmark.run(
+            repeats=2,
+            warmup=0,
+            point_counts=(2,),
+            batch_sizes=(1,),
+            smooth_window_hours=3,
+        )
+
+    assert len(records) == 2
+    assert all(record.ntime == synthetic_sst.sizes["time"] for record in records)
+    assert all(record.cpu_compute_seconds is not None for record in records)
+    assert all(record.gpu_end_to_end_seconds >= record.gpu_compute_seconds for record in records)
