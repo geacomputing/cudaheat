@@ -83,7 +83,16 @@ class CUDAHeat:
     """
 
     _RETURNABLE_FIELDS = frozenset(
-        {"climatology", "threshold_cycle", "threshold", "anomaly", "excess", "mask"}
+        {
+            "climatology_raw",
+            "climatology",
+            "threshold_raw",
+            "threshold_cycle",
+            "threshold",
+            "anomaly",
+            "excess",
+            "mask",
+        }
     )
 
     def __init__(
@@ -95,6 +104,7 @@ class CUDAHeat:
         vram_safety: float = 0.30,
         devices: Iterable[int] = (0,),
         time_dim: str | None = "time",
+        point_indices: Iterable[int] | slice | None = None,
     ) -> None:
         self.dtype = np.dtype(dtype)
         if self.dtype not in (np.dtype("float32"), np.dtype("float64")):
@@ -106,6 +116,7 @@ class CUDAHeat:
         if len(set(self.devices)) != len(self.devices):
             raise ValueError("devices must not contain duplicates")
         self.device_id = self.devices[0]
+        self.source_path = str(source) if not isinstance(source, xr.Dataset) else None
         self._owns_dataset = not isinstance(source, xr.Dataset)
         self._dataset = xr.open_dataset(source) if self._owns_dataset else source
         if variable not in self._dataset:
@@ -123,6 +134,10 @@ class CUDAHeat:
             .stack(point=self.spatial_dims)
             .transpose(self.time_dim, "point")
         )
+        all_point_count = int(self._stacked.sizes["point"])
+        self.point_indices = self._normalise_point_indices(point_indices, all_point_count)
+        if point_indices is not None:
+            self._stacked = self._stacked.isel(point=self.point_indices)
         self.ntime = int(self._stacked.sizes[self.time_dim])
         self.npoints = int(self._stacked.sizes["point"])
         if self.ntime < 1 or self.npoints < 1:
@@ -183,6 +198,24 @@ class CUDAHeat:
             return datetime_dims[0]
         raise ValueError("could not identify one time dimension; pass time_dim explicitly")
 
+    @staticmethod
+    def _normalise_point_indices(
+        point_indices: Iterable[int] | slice | None, all_point_count: int
+    ) -> np.ndarray:
+        if point_indices is None:
+            return np.arange(all_point_count, dtype=np.intp)
+        if isinstance(point_indices, slice):
+            indices = np.arange(all_point_count, dtype=np.intp)[point_indices]
+        else:
+            indices = np.asarray(tuple(point_indices), dtype=np.intp)
+        if indices.ndim != 1 or indices.size == 0:
+            raise ValueError("point_indices must select at least one spatial point")
+        if np.any(indices < 0) or np.any(indices >= all_point_count):
+            raise IndexError("point_indices contains an out-of-range spatial point")
+        if np.unique(indices).size != indices.size:
+            raise ValueError("point_indices must not contain duplicates")
+        return indices
+
     def _single_series_message(self, estimate: BatchEstimate) -> str:
         return (
             "A single complete SST time series cannot fit in the configured GPU budget. "
@@ -192,14 +225,19 @@ class CUDAHeat:
             "the scientific memory model only after measurement."
         )
 
-    def _load_spatial_batch(self, point_start: int, point_stop: int) -> np.ndarray:
+    def _load_spatial_batch(
+        self, point_start: int, point_stop: int, dtype: str | np.dtype[Any] | None = None
+    ) -> np.ndarray:
         """Read one full-time spatial slice from Xarray into CPU RAM.
 
         This is intentionally the only disk-to-RAM selection used by the engine:
         it slices ``point`` and never ``time``.
         """
         selected = self._stacked.isel(point=slice(point_start, point_stop)).load()
-        values = np.asarray(selected.data, dtype=self.dtype)
+        target_dtype = self.dtype if dtype is None else np.dtype(dtype)
+        if target_dtype not in (np.dtype("float32"), np.dtype("float64")):
+            raise ValueError("batch dtype must be float32 or float64")
+        values = np.asarray(selected.data, dtype=target_dtype)
         if values.shape != (self.ntime, point_stop - point_start):
             raise RuntimeError("spatial batch lost part of its time series")
         return np.ascontiguousarray(values)
@@ -212,6 +250,7 @@ class CUDAHeat:
         smooth_window_hours: int = 120,
         return_fields: Iterable[str] = (),
         on_batch: Callable[[BatchOutput], None] | None = None,
+        batch_size: int | None = None,
     ) -> PipelineResult:
         """Run the first-milestone GPU pipeline over all spatial batches.
 
@@ -229,7 +268,9 @@ class CUDAHeat:
         exceedance_count = np.zeros(self.npoints, dtype=np.uint64)
         telemetry: list[BatchTelemetry] = []
         point_start = 0
-        active_batch_size = self.batch_size
+        if batch_size is not None and batch_size < 1:
+            raise ValueError("batch_size must be positive")
+        active_batch_size = min(batch_size, self.npoints) if batch_size is not None else self.batch_size
 
         while point_start < self.npoints:
             current_size = min(active_batch_size, self.npoints - point_start)
@@ -301,6 +342,7 @@ class CUDAHeat:
                 "vram_safety": self.vram_safety,
                 "initial_batch_estimate": self.batch_estimate.as_dict(),
                 "devices": self.devices,
+                "requested_batch_size": batch_size,
             },
         )
         self.last_result = result
@@ -322,6 +364,16 @@ class CUDAHeat:
     def mask(self, **kwargs: Any) -> xr.DataArray:
         """Return an in-memory exceedance mask; use only for manageable output sizes."""
         return self.run(return_fields={"mask"}, **kwargs).data["mask"]
+
+    def validate(self, **kwargs: Any) -> Any:
+        """Compare float64 CPU fields with GPU fields without splitting time.
+
+        The returned :class:`cudaheat.validation.ValidationResult` contains
+        numerical, NaN, mask-boundary, and per-point count diagnostics.
+        """
+        from .validation import validate_cpu_gpu
+
+        return validate_cpu_gpu(self, **kwargs)
 
     def detect(self, *_: Any, **__: Any) -> None:
         """Reserve the public extension point for future GPU MHW event detection."""
@@ -400,7 +452,9 @@ class CUDAHeat:
     def _transfer_requested_fields(self, fields: PreEventFields) -> dict[str, np.ndarray]:
         requested = getattr(self, "_active_return_fields", frozenset())
         mapping = {
+            "climatology_raw": fields.climatology_raw,
             "climatology": fields.climatology,
+            "threshold_raw": fields.threshold_raw,
             "threshold_cycle": fields.threshold_cycle,
             "threshold": fields.threshold,
             "anomaly": fields.anomaly,
@@ -413,7 +467,9 @@ class CUDAHeat:
     def _allocate_output_buffers(self, requested: frozenset[str]) -> dict[str, np.ndarray]:
         self._active_return_fields = requested
         specs: dict[str, tuple[tuple[int, int], np.dtype[Any]]] = {
+            "climatology_raw": ((HOURS_PER_LEAP_YEAR, self.npoints), self.dtype),
             "climatology": ((HOURS_PER_LEAP_YEAR, self.npoints), self.dtype),
+            "threshold_raw": ((HOURS_PER_LEAP_YEAR, self.npoints), self.dtype),
             "threshold_cycle": ((HOURS_PER_LEAP_YEAR, self.npoints), self.dtype),
             "threshold": ((self.ntime, self.npoints), self.dtype),
             "anomaly": ((self.ntime, self.npoints), self.dtype),
@@ -433,7 +489,11 @@ class CUDAHeat:
     def _to_dataset(self, exceedance_count: np.ndarray, buffers: dict[str, np.ndarray]) -> xr.Dataset:
         data = {"exceedance_count": self._to_dataarray(exceedance_count, "exceedance_count")}
         for name, values in buffers.items():
-            leading_dim = "climatology_hour" if name in {"climatology", "threshold_cycle"} else self.time_dim
+            leading_dim = (
+                "climatology_hour"
+                if name in {"climatology_raw", "climatology", "threshold_raw", "threshold_cycle"}
+                else self.time_dim
+            )
             data[name] = self._to_dataarray(values, name, leading_dim)
         return xr.Dataset(data)
 

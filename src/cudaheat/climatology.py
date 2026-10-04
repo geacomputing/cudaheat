@@ -16,7 +16,9 @@ _MONTH_OFFSETS = np.array([0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335
 class PreEventFields:
     """Arrays created before future MHW event detection."""
 
+    climatology_raw: Any
     climatology: Any
+    threshold_raw: Any
     threshold_cycle: Any
     threshold: Any
     anomaly: Any
@@ -131,19 +133,25 @@ def cpu_pre_event_fields(
     _validate_inputs(values, bins, baseline_indices, percentile, smooth_window_hours, nbins)
     reference = values[baseline_indices]
     reference_bins = bins[baseline_indices]
-    climatology = smooth_circular_cpu(
-        _nanmean_by_bin_cpu(reference, reference_bins, nbins), smooth_window_hours
-    )
-    threshold_cycle = smooth_circular_cpu(
-        _nanpercentile_by_bin_cpu(reference, reference_bins, nbins, percentile),
-        smooth_window_hours,
-    )
+    climatology_raw = _nanmean_by_bin_cpu(reference, reference_bins, nbins)
+    climatology = smooth_circular_cpu(climatology_raw, smooth_window_hours)
+    threshold_raw = _nanpercentile_by_bin_cpu(reference, reference_bins, nbins, percentile)
+    threshold_cycle = smooth_circular_cpu(threshold_raw, smooth_window_hours)
     climatology_by_time = climatology[bins]
     threshold = threshold_cycle[bins]
     anomaly = values - climatology_by_time
     excess = values - threshold
     exceedance = np.logical_and(values > threshold, ~np.isnan(values))
-    return PreEventFields(climatology, threshold_cycle, threshold, anomaly, excess, exceedance)
+    return PreEventFields(
+        climatology_raw,
+        climatology,
+        threshold_raw,
+        threshold_cycle,
+        threshold,
+        anomaly,
+        excess,
+        exceedance,
+    )
 
 
 def _nanmean_by_bin_gpu(values: Any, bins: Any, nbins: int, cp: Any) -> Any:
@@ -236,20 +244,25 @@ def gpu_pre_event_fields(
     _validate_inputs(values, bins, baseline_indices, percentile, smooth_window_hours, nbins)
     reference = values[baseline_indices]
     reference_bins = bins[baseline_indices]
-    climatology = _smooth_circular(
-        _nanmean_by_bin_gpu(reference, reference_bins, nbins, cp), smooth_window_hours, cp
-    )
-    threshold_cycle = _smooth_circular(
-        _nanpercentile_by_bin_gpu(reference, reference_bins, nbins, percentile, cp),
-        smooth_window_hours,
-        cp,
-    )
+    climatology_raw = _nanmean_by_bin_gpu(reference, reference_bins, nbins, cp)
+    climatology = _smooth_circular(climatology_raw, smooth_window_hours, cp)
+    threshold_raw = _nanpercentile_by_bin_gpu(reference, reference_bins, nbins, percentile, cp)
+    threshold_cycle = _smooth_circular(threshold_raw, smooth_window_hours, cp)
     climatology_by_time = climatology[bins]
     threshold = threshold_cycle[bins]
     anomaly = values - climatology_by_time
     excess = values - threshold
     exceedance = cp.logical_and(values > threshold, ~cp.isnan(values))
-    return PreEventFields(climatology, threshold_cycle, threshold, anomaly, excess, exceedance)
+    return PreEventFields(
+        climatology_raw,
+        climatology,
+        threshold_raw,
+        threshold_cycle,
+        threshold,
+        anomaly,
+        excess,
+        exceedance,
+    )
 
 
 def _validate_inputs(

@@ -2,6 +2,7 @@
 
 from .core import CUDAHeat, BatchOutput, PipelineResult
 from .exceptions import CUDAHeatError, CUDAUnavailableError, InsufficientVRAMError
+from .validation import ValidationResult, validate_cpu_gpu
 
 __all__ = [
     "BatchOutput",
@@ -10,6 +11,8 @@ __all__ = [
     "CUDAUnavailableError",
     "InsufficientVRAMError",
     "PipelineResult",
+    "ValidationResult",
+    "validate_cpu_gpu",
 ]
 
 __version__ = "0.1.0"
