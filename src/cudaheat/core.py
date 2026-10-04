@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import logging
 from pathlib import Path
 from time import perf_counter
@@ -233,14 +233,24 @@ class CUDAHeat:
         This is intentionally the only disk-to-RAM selection used by the engine:
         it slices ``point`` and never ``time``.
         """
+        values, _, _ = self._load_spatial_batch_profiled(point_start, point_stop, dtype)
+        return values
+
+    def _load_spatial_batch_profiled(
+        self, point_start: int, point_stop: int, dtype: str | np.dtype[Any] | None = None
+    ) -> tuple[np.ndarray, float, float]:
+        """Load one full-time spatial batch and separate I/O from preparation."""
+        read_start = perf_counter()
         selected = self._stacked.isel(point=slice(point_start, point_stop)).load()
+        host_read_seconds = perf_counter() - read_start
+        prepare_start = perf_counter()
         target_dtype = self.dtype if dtype is None else np.dtype(dtype)
         if target_dtype not in (np.dtype("float32"), np.dtype("float64")):
             raise ValueError("batch dtype must be float32 or float64")
         values = np.asarray(selected.data, dtype=target_dtype)
         if values.shape != (self.ntime, point_stop - point_start):
             raise RuntimeError("spatial batch lost part of its time series")
-        return np.ascontiguousarray(values)
+        return np.ascontiguousarray(values), host_read_seconds, perf_counter() - prepare_start
 
     def run(
         self,
@@ -284,10 +294,20 @@ class CUDAHeat:
                     self.ntime,
                     self.device_id,
                 )
-                cpu_values = self._load_spatial_batch(point_start, point_stop)
+                cpu_values, host_read_seconds, host_prepare_seconds = self._load_spatial_batch_profiled(
+                    point_start, point_stop
+                )
                 try:
                     output, batch_telemetry = self._execute_gpu_batch(
-                        cpu_values, point_start, point_stop, rows, percentile, smooth_window_hours, retries
+                        cpu_values,
+                        point_start,
+                        point_stop,
+                        rows,
+                        percentile,
+                        smooth_window_hours,
+                        retries,
+                        host_read_seconds,
+                        host_prepare_seconds,
                     )
                 except Exception as exc:
                     if not self._is_gpu_oom(exc):
@@ -307,8 +327,13 @@ class CUDAHeat:
                         retries,
                     )
                     continue
+                assembly_start = perf_counter()
                 self._store_batch(output.fields, buffers, point_start, point_stop)
                 exceedance_count[point_start:point_stop] = output.fields.pop("exceedance_count")
+                batch_telemetry = replace(
+                    batch_telemetry,
+                    result_assembly_seconds=perf_counter() - assembly_start,
+                )
                 completed = BatchOutput(point_start, point_stop, output.fields, batch_telemetry)
                 if on_batch is not None:
                     on_batch(completed)
@@ -327,12 +352,16 @@ class CUDAHeat:
                 break
 
         self.batch_size = active_batch_size
+        final_assembly_start = perf_counter()
+        data = self._to_dataset(exceedance_count, buffers)
+        final_assembly_seconds = perf_counter() - final_assembly_start
         result = PipelineResult(
-            data=self._to_dataset(exceedance_count, buffers),
+            data=data,
             telemetry=tuple(telemetry),
             metadata={
                 "variable": self.variable,
                 "dtype": self.dtype.name,
+                "npoints": self.npoints,
                 "baseline": baseline,
                 "percentile": percentile,
                 "smooth_window_hours": smooth_window_hours,
@@ -343,6 +372,7 @@ class CUDAHeat:
                 "initial_batch_estimate": self.batch_estimate.as_dict(),
                 "devices": self.devices,
                 "requested_batch_size": batch_size,
+                "result_dataset_assembly_seconds": final_assembly_seconds,
             },
         )
         self.last_result = result
@@ -391,16 +421,25 @@ class CUDAHeat:
         percentile: float,
         smooth_window_hours: int,
         retries: int,
+        host_read_seconds: float,
+        host_prepare_seconds: float,
     ) -> tuple[BatchOutput, BatchTelemetry]:
         cp = cupy()
         with cp.cuda.Device(self.device_id):
             free_before, total_bytes = cp.cuda.runtime.memGetInfo()
+            allocation_start = perf_counter()
+            gpu_values = cp.empty(cpu_values.shape, dtype=cpu_values.dtype)
+            cp.cuda.get_current_stream().synchronize()
+            gpu_allocation_seconds = perf_counter() - allocation_start
             transfer_start = perf_counter()
-            gpu_values = cp.asarray(cpu_values)
+            gpu_values.set(cpu_values)
             cp.cuda.get_current_stream().synchronize()
             transfer_to_device = perf_counter() - transfer_start
+            metadata_start = perf_counter()
             gpu_bins = cp.asarray(self._bins)
             gpu_rows = cp.asarray(rows)
+            cp.cuda.get_current_stream().synchronize()
+            gpu_metadata_transfer_seconds = perf_counter() - metadata_start
             event_start = cp.cuda.Event()
             event_end = cp.cuda.Event()
             event_start.record()
@@ -443,6 +482,10 @@ class CUDAHeat:
                 transfer_to_device_seconds=transfer_to_device,
                 gpu_compute_seconds=float(gpu_compute),
                 transfer_from_device_seconds=transfer_from_device,
+                host_read_seconds=host_read_seconds,
+                host_prepare_seconds=host_prepare_seconds,
+                gpu_allocation_seconds=gpu_allocation_seconds,
+                gpu_metadata_transfer_seconds=gpu_metadata_transfer_seconds,
             )
             # CuPy pools are intentionally released after telemetry has been sampled.
             del gpu_fields, gpu_values, gpu_bins, gpu_rows

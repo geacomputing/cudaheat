@@ -38,6 +38,7 @@ class CUDAHeatBenchmark:
         gpu_dtypes: Iterable[str] | None = None,
         cpu_dtype: str = "float64",
         cpu_reference: Callable[[], None] | None = None,
+        reuse_cpu_reference: bool = True,
         **pipeline_kwargs: Any,
     ) -> list[BenchmarkRecord]:
         """Run a matrix of actual measurements and retain every repeat.
@@ -53,6 +54,8 @@ class CUDAHeatBenchmark:
         point_counts = tuple(dict.fromkeys(point_counts or (self.engine.npoints,)))
         batch_sizes = tuple(batch_sizes or (None,))
         gpu_dtypes = tuple(gpu_dtypes or (self.engine.dtype.name,))
+        if not gpu_dtypes:
+            raise ValueError("gpu_dtypes must contain at least one precision")
         if any(count < 1 or count > self.engine.npoints for count in point_counts):
             raise ValueError("point_counts must be in [1, engine.npoints]")
         if any(size is not None and size < 1 for size in batch_sizes):
@@ -60,20 +63,38 @@ class CUDAHeatBenchmark:
         self.metadata = self._metadata(pipeline_kwargs, cpu_dtype_value.name)
         new_records: list[BenchmarkRecord] = []
         for point_count in point_counts:
+            cpu_measurements: list[float] | None = None
+            if reuse_cpu_reference:
+                with self._engine_for_configuration(point_count, gpu_dtypes[0]) as cpu_engine:
+                    for _ in range(warmup):
+                        self._run_cpu(cpu_engine, cpu_dtype_value, cpu_reference, pipeline_kwargs)
+                    cpu_measurements = [
+                        self._run_cpu(cpu_engine, cpu_dtype_value, cpu_reference, pipeline_kwargs)
+                        for _ in range(repeats)
+                    ]
             for gpu_dtype in gpu_dtypes:
                 for requested_batch_size in batch_sizes:
                     with self._engine_for_configuration(point_count, gpu_dtype) as configured:
                         for _ in range(warmup):
-                            self._run_cpu(configured, cpu_dtype_value, cpu_reference, pipeline_kwargs)
+                            if not reuse_cpu_reference:
+                                self._run_cpu(
+                                    configured, cpu_dtype_value, cpu_reference, pipeline_kwargs
+                                )
                             configured.run(batch_size=requested_batch_size, **pipeline_kwargs)
                         for repeat in range(repeats):
-                            cpu_seconds = self._run_cpu(
-                                configured, cpu_dtype_value, cpu_reference, pipeline_kwargs
+                            cpu_seconds = (
+                                cpu_measurements[repeat]
+                                if cpu_measurements is not None
+                                else self._run_cpu(
+                                    configured, cpu_dtype_value, cpu_reference, pipeline_kwargs
+                                )
                             )
                             try:
+                                pipeline_start = perf_counter()
                                 result = configured.run(
                                     batch_size=requested_batch_size, **pipeline_kwargs
                                 )
+                                pipeline_wall_seconds = perf_counter() - pipeline_start
                             except CUDAHeatError as exc:
                                 record = self._failed_record(
                                     configured,
@@ -93,6 +114,7 @@ class CUDAHeatBenchmark:
                                 cpu_seconds,
                                 requested_batch_size,
                                 cpu_dtype_value.name,
+                                pipeline_wall_seconds,
                             )
                             self.records.append(record)
                             new_records.append(record)
@@ -144,6 +166,7 @@ class CUDAHeatBenchmark:
         cpu_seconds: float | None,
         requested_batch_size: int | None,
         cpu_dtype: str,
+        pipeline_wall_seconds: float,
     ) -> BenchmarkRecord:
         telemetry = result.telemetry
         if not telemetry:
@@ -152,7 +175,7 @@ class CUDAHeatBenchmark:
         return BenchmarkRecord(
             repeat=repeat,
             ntime=self.engine.ntime,
-            npoints=result.exceedance_count.size,
+            npoints=int(result.metadata["npoints"]),
             dtype=result.metadata["dtype"],
             device_id=first.device_id,
             cpu_compute_seconds=cpu_seconds,
@@ -182,6 +205,15 @@ class CUDAHeatBenchmark:
             baseline=result.metadata["baseline"],
             percentile=result.metadata["percentile"],
             smooth_window_hours=result.metadata["smooth_window_hours"],
+            host_read_seconds=sum(item.host_read_seconds for item in telemetry),
+            host_prepare_seconds=sum(item.host_prepare_seconds for item in telemetry),
+            gpu_allocation_seconds=sum(item.gpu_allocation_seconds for item in telemetry),
+            gpu_metadata_transfer_seconds=sum(
+                item.gpu_metadata_transfer_seconds for item in telemetry
+            ),
+            result_assembly_seconds=sum(item.result_assembly_seconds for item in telemetry)
+            + result.metadata.get("result_dataset_assembly_seconds", 0.0),
+            pipeline_wall_seconds=pipeline_wall_seconds,
         )
 
     def _failed_record(

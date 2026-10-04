@@ -40,6 +40,12 @@ class BenchmarkRecord:
     baseline: tuple[int, int] | None = None
     percentile: float | None = None
     smooth_window_hours: int | None = None
+    host_read_seconds: float = 0.0
+    host_prepare_seconds: float = 0.0
+    gpu_allocation_seconds: float = 0.0
+    gpu_metadata_transfer_seconds: float = 0.0
+    result_assembly_seconds: float = 0.0
+    pipeline_wall_seconds: float | None = None
 
     @property
     def compute_speedup(self) -> float | None:
@@ -52,6 +58,13 @@ class BenchmarkRecord:
         if self.cpu_compute_seconds is None or self.gpu_end_to_end_seconds <= 0:
             return None
         return self.cpu_compute_seconds / self.gpu_end_to_end_seconds
+
+    @property
+    def pipeline_speedup(self) -> float | None:
+        """CPU compute divided by complete measured GPU pipeline wall time."""
+        if self.cpu_compute_seconds is None or not self.pipeline_wall_seconds:
+            return None
+        return self.cpu_compute_seconds / self.pipeline_wall_seconds
 
     @property
     def speedup(self) -> float | None:
@@ -93,6 +106,7 @@ class BenchmarkRecord:
             {
                 "compute_speedup": self.compute_speedup,
                 "end_to_end_speedup": self.end_to_end_speedup,
+                "pipeline_speedup": self.pipeline_speedup,
                 "speedup": self.speedup,
                 "values_processed": self.values_processed,
                 "cpu_values_per_second": self.cpu_values_per_second,
@@ -155,6 +169,7 @@ def summarize_records(records: Iterable[BenchmarkRecord]) -> dict[str, dict[str,
             ),
             "compute_speedup": summarize_values(record.compute_speedup for record in group),
             "end_to_end_speedup": summarize_values(record.end_to_end_speedup for record in group),
+            "pipeline_speedup": summarize_values(record.pipeline_speedup for record in group),
             "gpu_compute_values_per_second": summarize_values(
                 record.gpu_compute_values_per_second for record in group
             ),

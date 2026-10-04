@@ -71,6 +71,11 @@ class BatchTelemetry:
     transfer_to_device_seconds: float
     gpu_compute_seconds: float
     transfer_from_device_seconds: float
+    host_read_seconds: float = 0.0
+    host_prepare_seconds: float = 0.0
+    gpu_allocation_seconds: float = 0.0
+    gpu_metadata_transfer_seconds: float = 0.0
+    result_assembly_seconds: float = 0.0
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
