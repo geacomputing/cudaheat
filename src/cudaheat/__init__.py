@@ -1,6 +1,6 @@
 """CUDAHeat: GPU-native preprocessing for hourly marine heatwave analysis."""
 
-from .core import CUDAHeat, BatchOutput, PipelineResult
+from .core import CUDAHeat, BatchOutput, EventDetectionResult, PipelineResult
 from .exceptions import CUDAHeatError, CUDAUnavailableError, InsufficientVRAMError
 from .validation import ValidationResult, validate_cpu_gpu
 
@@ -9,6 +9,7 @@ __all__ = [
     "CUDAHeat",
     "CUDAHeatError",
     "CUDAUnavailableError",
+    "EventDetectionResult",
     "InsufficientVRAMError",
     "PipelineResult",
     "ValidationResult",

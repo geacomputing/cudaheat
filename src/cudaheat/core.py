@@ -19,6 +19,7 @@ from .climatology import (
     gpu_pre_event_fields,
     hourly_climatology_index,
 )
+from .detection import EventRuns, detect_events
 from .exceptions import InsufficientVRAMError
 from .memory import (
     BatchEstimate,
@@ -56,6 +57,30 @@ class PipelineResult:
     def exceedance_count(self) -> xr.DataArray:
         """Number of threshold exceedances per spatial point."""
         return self.data["exceedance_count"]
+
+
+@dataclass
+class EventBatchOutput:
+    """Compact event runs returned to the CPU for one spatial GPU batch."""
+
+    point_start: int
+    point_stop: int
+    events: EventRuns
+    telemetry: BatchTelemetry
+
+
+@dataclass
+class EventDetectionResult:
+    """Minimal detected-event table, telemetry, and reproducibility metadata."""
+
+    data: xr.Dataset
+    telemetry: tuple[BatchTelemetry, ...]
+    metadata: dict[str, Any]
+
+    @property
+    def event_count(self) -> xr.DataArray:
+        """Number of retained events per spatial point."""
+        return self.data["event_count"]
 
 
 class CUDAHeat:
@@ -156,6 +181,7 @@ class CUDAHeat:
             raise InsufficientVRAMError(self._single_series_message(self.batch_estimate))
         self.batch_size = self.batch_estimate.batch_size
         self.last_result: PipelineResult | None = None
+        self.last_detection_result: EventDetectionResult | None = None
         logger.info(
             "CUDAHeat selected GPU %s (%s); free %.2f GiB / total %.2f GiB; "
             "dtype=%s; initial spatial batch=%d; %.2f MiB/point estimate",
@@ -405,12 +431,130 @@ class CUDAHeat:
 
         return validate_cpu_gpu(self, **kwargs)
 
-    def detect(self, *_: Any, **__: Any) -> None:
-        """Reserve the public extension point for future GPU MHW event detection."""
-        raise NotImplementedError(
-            "Event detection is intentionally outside CUDAHeat's first milestone; "
-            "the GPU exceedance mask is the current pipeline endpoint."
+    def detect(
+        self,
+        *,
+        baseline: tuple[int, int] | None = None,
+        percentile: float = 0.90,
+        smooth_window_hours: int = 120,
+        min_duration_hours: int = 1,
+        max_internal_gap_hours: int = 0,
+        join_gap_hours: int = 0,
+        batch_size: int | None = None,
+    ) -> EventDetectionResult:
+        """Detect vectorized threshold-exceedance events on the GPU.
+
+        The pipeline preserves raw exceedance, fills short internal gaps,
+        filters contiguous runs by duration, then joins nearby candidates.
+        Dense labels and event metrics remain separate optional stages.
+        """
+        if not isinstance(min_duration_hours, int) or isinstance(min_duration_hours, bool):
+            raise TypeError("min_duration_hours must be an integer")
+        if min_duration_hours < 1:
+            raise ValueError("min_duration_hours must be positive")
+        if not isinstance(max_internal_gap_hours, int) or isinstance(max_internal_gap_hours, bool):
+            raise TypeError("max_internal_gap_hours must be an integer")
+        if max_internal_gap_hours < 0:
+            raise ValueError("max_internal_gap_hours must be non-negative")
+        if not isinstance(join_gap_hours, int) or isinstance(join_gap_hours, bool):
+            raise TypeError("join_gap_hours must be an integer")
+        if join_gap_hours < 0:
+            raise ValueError("join_gap_hours must be non-negative")
+        if batch_size is not None and batch_size < 1:
+            raise ValueError("batch_size must be positive")
+
+        rows = baseline_rows(self._time, baseline)
+        event_parts: list[EventRuns] = []
+        telemetry: list[BatchTelemetry] = []
+        point_start = 0
+        active_batch_size = min(batch_size, self.npoints) if batch_size is not None else self.batch_size
+
+        while point_start < self.npoints:
+            current_size = min(active_batch_size, self.npoints - point_start)
+            retries = 0
+            while True:
+                point_stop = point_start + current_size
+                cpu_values, host_read_seconds, host_prepare_seconds = self._load_spatial_batch_profiled(
+                    point_start, point_stop
+                )
+                try:
+                    output, batch_telemetry = self._execute_gpu_detection_batch(
+                        cpu_values,
+                        point_start,
+                        point_stop,
+                        rows,
+                        percentile,
+                        smooth_window_hours,
+                        min_duration_hours,
+                        max_internal_gap_hours,
+                        join_gap_hours,
+                        retries,
+                        host_read_seconds,
+                        host_prepare_seconds,
+                    )
+                except Exception as exc:
+                    if not self._is_gpu_oom(exc):
+                        raise
+                    release_gpu_memory(self.device_id)
+                    if current_size == 1:
+                        raise InsufficientVRAMError(self._single_series_message(self.batch_estimate)) from exc
+                    retries += 1
+                    current_size = reduced_batch_size(current_size)
+                    active_batch_size = current_size
+                    logger.warning(
+                        "GPU OOM during detection for points %d:%d; retrying with %d points (retry %d)",
+                        point_start,
+                        point_stop,
+                        current_size,
+                        retries,
+                    )
+                    continue
+                assembly_start = perf_counter()
+                event_parts.append(
+                    EventRuns(
+                        point=np.asarray(output.events.point, dtype=np.intp) + point_start,
+                        start=np.asarray(output.events.start, dtype=np.intp),
+                        stop=np.asarray(output.events.stop, dtype=np.intp),
+                        duration=np.asarray(output.events.duration, dtype=np.intp),
+                    )
+                )
+                telemetry.append(
+                    replace(
+                        batch_telemetry,
+                        result_assembly_seconds=perf_counter() - assembly_start,
+                    )
+                )
+                point_start = point_stop
+                break
+
+        self.batch_size = active_batch_size
+        final_assembly_start = perf_counter()
+        data = self._event_dataset(event_parts)
+        result = EventDetectionResult(
+            data=data,
+            telemetry=tuple(telemetry),
+            metadata={
+                "variable": self.variable,
+                "dtype": self.dtype.name,
+                "baseline": baseline,
+                "percentile": percentile,
+                "smooth_window_hours": smooth_window_hours,
+                "min_duration_hours": min_duration_hours,
+                "max_internal_gap_hours": max_internal_gap_hours,
+                "join_gap_hours": join_gap_hours,
+                "time_was_split": False,
+                "detection_stages": (
+                    "exceedance",
+                    "internal_gap_fill",
+                    "contiguous_runs",
+                    "minimum_duration",
+                    "join_candidate_runs",
+                ),
+                "result_dataset_assembly_seconds": perf_counter() - final_assembly_start,
+            },
         )
+        self.last_detection_result = result
+        return result
 
     def _execute_gpu_batch(
         self,
@@ -492,6 +636,99 @@ class CUDAHeat:
             release_gpu_memory(self.device_id)
             return BatchOutput(point_start, point_stop, fields, telemetry), telemetry
 
+    def _execute_gpu_detection_batch(
+        self,
+        cpu_values: np.ndarray,
+        point_start: int,
+        point_stop: int,
+        rows: np.ndarray,
+        percentile: float,
+        smooth_window_hours: int,
+        min_duration_hours: int,
+        max_internal_gap_hours: int,
+        join_gap_hours: int,
+        retries: int,
+        host_read_seconds: float,
+        host_prepare_seconds: float,
+    ) -> tuple[EventBatchOutput, BatchTelemetry]:
+        """Preprocess and detect one batch, returning only compact event runs."""
+        cp = cupy()
+        with cp.cuda.Device(self.device_id):
+            free_before, total_bytes = cp.cuda.runtime.memGetInfo()
+            allocation_start = perf_counter()
+            gpu_values = cp.empty(cpu_values.shape, dtype=cpu_values.dtype)
+            cp.cuda.get_current_stream().synchronize()
+            gpu_allocation_seconds = perf_counter() - allocation_start
+            transfer_start = perf_counter()
+            gpu_values.set(cpu_values)
+            cp.cuda.get_current_stream().synchronize()
+            transfer_to_device = perf_counter() - transfer_start
+            metadata_start = perf_counter()
+            gpu_bins = cp.asarray(self._bins)
+            gpu_rows = cp.asarray(rows)
+            cp.cuda.get_current_stream().synchronize()
+            gpu_metadata_transfer_seconds = perf_counter() - metadata_start
+            event_start = cp.cuda.Event()
+            event_end = cp.cuda.Event()
+            event_start.record()
+            gpu_fields = gpu_pre_event_fields(
+                gpu_values,
+                gpu_bins,
+                gpu_rows,
+                percentile=percentile,
+                smooth_window_hours=smooth_window_hours,
+                nbins=HOURS_PER_LEAP_YEAR,
+            )
+            detected = detect_events(
+                gpu_values,
+                gpu_fields.threshold,
+                min_duration_hours=min_duration_hours,
+                max_internal_gap_hours=max_internal_gap_hours,
+                join_gap_hours=join_gap_hours,
+                xp=cp,
+            )
+            event_end.record()
+            event_end.synchronize()
+            gpu_compute = cp.cuda.get_elapsed_time(event_start, event_end) / 1000
+            free_after_compute, _ = cp.cuda.runtime.memGetInfo()
+            pool_used = cp.get_default_memory_pool().used_bytes()
+            transfer_start = perf_counter()
+            events = EventRuns(
+                point=cp.asnumpy(detected.events.point),
+                start=cp.asnumpy(detected.events.start),
+                stop=cp.asnumpy(detected.events.stop),
+                duration=cp.asnumpy(detected.events.duration),
+            )
+            cp.cuda.get_current_stream().synchronize()
+            transfer_from_device = perf_counter() - transfer_start
+            free_after, _ = cp.cuda.runtime.memGetInfo()
+            telemetry = BatchTelemetry(
+                device_id=self.device_id,
+                point_start=point_start,
+                point_stop=point_stop,
+                batch_size=point_stop - point_start,
+                dtype=self.dtype.name,
+                bytes_per_point=self._estimator.bytes_per_point,
+                safety_fraction=self.vram_safety,
+                oom_retries=retries,
+                free_before_bytes=int(free_before),
+                used_before_bytes=int(total_bytes - free_before),
+                free_after_bytes=int(free_after),
+                used_after_bytes=int(total_bytes - free_after),
+                peak_used_bytes=int(total_bytes - min(free_before, free_after_compute, free_after)),
+                pool_used_bytes=int(pool_used),
+                transfer_to_device_seconds=transfer_to_device,
+                gpu_compute_seconds=float(gpu_compute),
+                transfer_from_device_seconds=transfer_from_device,
+                host_read_seconds=host_read_seconds,
+                host_prepare_seconds=host_prepare_seconds,
+                gpu_allocation_seconds=gpu_allocation_seconds,
+                gpu_metadata_transfer_seconds=gpu_metadata_transfer_seconds,
+            )
+            del detected, gpu_fields, gpu_values, gpu_bins, gpu_rows
+            release_gpu_memory(self.device_id)
+            return EventBatchOutput(point_start, point_stop, events, telemetry), telemetry
+
     def _transfer_requested_fields(self, fields: PreEventFields) -> dict[str, np.ndarray]:
         requested = getattr(self, "_active_return_fields", frozenset())
         mapping = {
@@ -539,6 +776,30 @@ class CUDAHeat:
             )
             data[name] = self._to_dataarray(values, name, leading_dim)
         return xr.Dataset(data)
+
+    def _event_dataset(self, event_parts: list[EventRuns]) -> xr.Dataset:
+        """Assemble compact host event runs into a stable xarray event table."""
+        point = np.concatenate([part.point for part in event_parts])
+        start = np.concatenate([part.start for part in event_parts])
+        stop = np.concatenate([part.stop for part in event_parts])
+        duration = np.concatenate([part.duration for part in event_parts])
+        event_ids = np.arange(1, start.size + 1, dtype=np.int64)
+        time_values = np.asarray(self._time.values)
+        data = xr.Dataset(
+            {
+                "point_index": ("event", self.point_indices[point]),
+                "start_index": ("event", start),
+                "stop_index": ("event", stop),
+                "duration_hours": ("event", duration),
+                "start_time": ("event", time_values[start]),
+                "end_time": ("event", time_values[stop - 1]),
+            },
+            coords={"event": event_ids},
+        )
+        event_count = np.bincount(point, minlength=self.npoints).astype(np.uint64, copy=False)
+        data["event_count"] = self._to_dataarray(event_count, "event_count")
+        data["stop_index"].attrs["description"] = "Exclusive time index; event interval is [start, stop)."
+        return data
 
     def _to_dataarray(
         self, values: np.ndarray, name: str, leading_dim: str | None = None
