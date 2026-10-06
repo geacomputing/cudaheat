@@ -1,0 +1,62 @@
+[
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Beta Benchmark",
+    "benchmark_id": "full_pipeline_beta",
+    "npoints": 32,
+    "dtype": "float32",
+    "gpu_compute_values_per_second": 13282080.948374242,
+    "gpu_end_to_end_values_per_second": 13145254.237598272,
+    "compute_speedup": 6.014608332281154,
+    "pipeline_speedup": 4.736164877767465
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Beta Benchmark",
+    "benchmark_id": "full_pipeline_beta",
+    "npoints": 128,
+    "dtype": "float32",
+    "gpu_compute_values_per_second": 50456857.75201583,
+    "gpu_end_to_end_values_per_second": 48924097.127156116,
+    "compute_speedup": 6.684229431744449,
+    "pipeline_speedup": 4.805410550480569
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Beta Benchmark",
+    "benchmark_id": "full_pipeline_beta",
+    "npoints": 512,
+    "dtype": "float32",
+    "gpu_compute_values_per_second": 165164703.04733062,
+    "gpu_end_to_end_values_per_second": 153692935.43516618,
+    "compute_speedup": 13.26637300410677,
+    "pipeline_speedup": 7.414867182926874
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Beta Benchmark",
+    "benchmark_id": "full_pipeline_beta",
+    "npoints": 2000,
+    "dtype": "float32",
+    "gpu_compute_values_per_second": 339673397.26082796,
+    "gpu_end_to_end_values_per_second": 306680010.58242446,
+    "compute_speedup": 27.560129295452416,
+    "pipeline_speedup": 11.77331815579034
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Beta Benchmark",
+    "benchmark_id": "full_pipeline_beta",
+    "npoints": 8000,
+    "dtype": "float32",
+    "gpu_compute_values_per_second": 350400110.1977821,
+    "gpu_end_to_end_values_per_second": 315585922.0335856,
+    "compute_speedup": 28.593073366174195,
+    "pipeline_speedup": 12.136294658028005
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Beta Benchmark",
+    "benchmark_id": "full_pipeline_beta",
+    "npoints": 18055,
+    "dtype": "float32",
+    "gpu_compute_values_per_second": 342664749.49240106,
+    "gpu_end_to_end_values_per_second": 309013388.05151886,
+    "compute_speedup": 27.709816091031044,
+    "pipeline_speedup": 11.840829777684377
+  }
+]

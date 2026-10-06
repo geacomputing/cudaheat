@@ -52,6 +52,7 @@
 \DeclareOption*{\PassOptionsToClass{\CurrentOption}{article}}
 \ProcessOptions
 \LoadClass{article}
+\setlength{\parindent}{0pt}
 
 \RequirePackage[svgnames,dvipsnames]{xcolor}
 
@@ -64,6 +65,10 @@
 \RequirePackage{etoolbox,balance}
 \RequirePackage{booktabs,makecell,multirow,array,colortbl,dcolumn,stfloats}
 \RequirePackage{xspace,xstring,footmisc}
+
+
+\RequirePackage{pgfplots}
+\RequirePackage{tikz}
 
 \RequirePackage[colorlinks]{hyperref}
 \colorlet{scolor}{black}
@@ -167,7 +172,7 @@
    columnsep=18pt
 ]{geometry}
 
-
+\setlength{\parindent}{0pt}
 
 
 \RequirePackage{tcolorbox}

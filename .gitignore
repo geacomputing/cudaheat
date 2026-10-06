@@ -10,4 +10,51 @@ build/
 *.nc
 *.zarr/
 benchmark-results/
+#benchmark_results/
 validation-results/
+
+
+# =========================================================
+# LaTeX compilation artifacts
+# =========================================================
+
+/LaTex/**/*.aux
+/LaTex/**/*.bbl
+/LaTex/**/*.bcf
+/LaTex/**/*.blg
+/LaTex/**/*.brf
+/LaTex/**/*.fdb_latexmk
+/LaTex/**/*.fls
+/LaTex/**/*.log
+/LaTex/**/*.out
+/LaTex/**/*.run.xml
+/LaTex/**/*.synctex
+/LaTex/**/*.synctex.gz
+/LaTex/**/*.toc
+/LaTex/**/*.lof
+/LaTex/**/*.lot
+/LaTex/**/*.nav
+/LaTex/**/*.snm
+/LaTex/**/*.vrb
+/LaTex/**/*.xdv
+/LaTex/**/*.dvi
+/LaTex/**/*.ps
+
+# Index / glossary files
+/LaTex/**/*.idx
+/LaTex/**/*.ilg
+/LaTex/**/*.ind
+/LaTex/**/*.ist
+/LaTex/**/*.acn
+/LaTex/**/*.acr
+/LaTex/**/*.alg
+/LaTex/**/*.glg
+/LaTex/**/*.glo
+/LaTex/**/*.gls
+/LaTex/**/*.glsdefs
+
+# Temporary/editor files
+/LaTex/**/*.tmp
+/LaTex/**/*.bak
+/LaTex/**/*.sav
+/LaTex/**/*~

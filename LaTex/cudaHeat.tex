@@ -35,8 +35,7 @@
 
 
 \usepackage{xcolor}
-
-\definecolor{RuleBlue}{RGB}{0,90,160}
+\input{class/cudaheat-colors}
 \usepackage{tabularx}
 % Preamble
 \usepackage{booktabs}
@@ -45,11 +44,6 @@
 
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 
-
-\definecolor{codebg}{HTML}{F7F7F7}
-\definecolor{codeframe}{HTML}{D0D0D0}
-\definecolor{terminalbg}{HTML}{1E1E1E}
-\definecolor{terminalfg}{HTML}{E6E6E6}
 
 \setminted[python]{
     fontsize=\scriptsize,
@@ -140,8 +134,7 @@
 % Title footnote 1.
 % eg: \tnotetext[1]{Title footnote text}
 % \tnotetext[<tnote number>]{<tnote text>} 
-\tnotetext[1]{This document is the results of the research
-   project funded by [].}
+\tnotetext[1]{"This project has received funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement No. 856612 and the Cyprus Government."}
 
 
 
@@ -201,21 +194,31 @@
 % Keywords
 % Each keyword is seperated by \sep
 \begin{keywords}
-MHWs, SST, EMME
+MHWs, SST, GPU, Taxonomy
 \end{keywords}
 
 
 \maketitle
 
 \section{Introduction}
-Some Introduction
+\input{chapters/partials/Intro}
 
 
 \section{Architecture}
-Some Architecture
+\input{chapters/partials/Architecture}
+
+\section{Benchmark and Sensitivity Analysis}
+\input{chapters/partials/Benchmark}
+
 
 \section{Methodology}
-Some methodology
+\input{chapters/partials/Methodology}
+
+
+\section{Taxonomy}
+\subsection{Single-cycle}
+\subsection{Total-cycle}
+
 
 \section{Results}
 Some Results

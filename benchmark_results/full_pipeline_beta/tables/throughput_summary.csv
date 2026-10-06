@@ -1,0 +1,7 @@
+benchmark_name,benchmark_id,npoints,dtype,gpu_compute_values_per_second,gpu_end_to_end_values_per_second,compute_speedup,pipeline_speedup
+CUDAHeat Full-Pipeline Beta Benchmark,full_pipeline_beta,32,float32,13282080.948374242,13145254.237598272,6.014608332281154,4.736164877767465
+CUDAHeat Full-Pipeline Beta Benchmark,full_pipeline_beta,128,float32,50456857.75201583,48924097.127156116,6.684229431744449,4.805410550480569
+CUDAHeat Full-Pipeline Beta Benchmark,full_pipeline_beta,512,float32,165164703.04733062,153692935.43516618,13.26637300410677,7.414867182926874
+CUDAHeat Full-Pipeline Beta Benchmark,full_pipeline_beta,2000,float32,339673397.26082796,306680010.58242446,27.560129295452416,11.77331815579034
+CUDAHeat Full-Pipeline Beta Benchmark,full_pipeline_beta,8000,float32,350400110.1977821,315585922.0335856,28.593073366174195,12.136294658028005
+CUDAHeat Full-Pipeline Beta Benchmark,full_pipeline_beta,18055,float32,342664749.49240106,309013388.05151886,27.709816091031044,11.840829777684377

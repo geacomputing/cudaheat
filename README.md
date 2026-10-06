@@ -28,6 +28,10 @@ The climatological cycle has 366 × 24 month/day/hour bins. Smoothing is circula
 pip install -e '.[gpu,benchmark,test]'
 ```
 
+For bounded-RAM Dask-backed NetCDF reads, install `.[lazy]` and pass
+`lazy=True` to `CUDAHeat`. CUDAHeat still transfers complete time series and
+uses spatial batches only.
+
 Install the CuPy extra matching the installed CUDA driver. Base-package imports work without CuPy, but `CUDAHeat` requires an NVIDIA CUDA device.
 
 ## Minimal use

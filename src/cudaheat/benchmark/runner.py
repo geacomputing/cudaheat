@@ -123,6 +123,13 @@ class CUDAHeatBenchmark:
     def _engine_for_configuration(self, point_count: int, gpu_dtype: str) -> CUDAHeat:
         if self.engine._dataset is None:
             raise RuntimeError("the benchmark source engine is closed")
+        indices = self.engine.point_indices[:point_count]
+        if indices.size and np.all(np.diff(indices) == 1):
+            point_selection: Iterable[int] | slice = slice(
+                int(indices[0]), int(indices[-1]) + 1
+            )
+        else:
+            point_selection = indices
         return CUDAHeat(
             self.engine._dataset,
             variable=self.engine.variable,
@@ -130,7 +137,7 @@ class CUDAHeatBenchmark:
             vram_safety=self.engine.vram_safety,
             devices=self.engine.devices,
             time_dim=self.engine.time_dim,
-            point_indices=self.engine.point_indices[:point_count],
+            point_indices=point_selection,
         )
 
     @staticmethod

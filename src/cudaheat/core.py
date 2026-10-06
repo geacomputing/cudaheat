@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 import logging
 from pathlib import Path
 from time import perf_counter
@@ -21,10 +21,10 @@ from .climatology import (
 )
 from .detection import EventRuns, detect_events
 from .exceptions import InsufficientVRAMError
+from .io import NetCDFReader
 from .memory import (
     BatchEstimate,
     BatchTelemetry,
-    GPUInfo,
     VRAMEstimator,
     cupy,
     get_gpu_info,
@@ -105,6 +105,12 @@ class CUDAHeat:
         Selected CUDA device IDs. The first milestone runs batches sequentially
         on the first selected device; the executor is device-explicit so future
         schedulers can distribute independent spatial batches over this list.
+    lazy:
+        Open a NetCDF path with Dask-backed Xarray arrays. Each CPU batch still
+        contains every time step for its selected spatial points.
+    lazy_spatial_chunk:
+        Maximum source chunk width along the final spatial dimension for lazy
+        reads. It affects disk-to-CPU I/O only, not CUDAHeat's GPU batch size.
     """
 
     _RETURNABLE_FIELDS = frozenset(
@@ -126,10 +132,12 @@ class CUDAHeat:
         *,
         variable: str,
         dtype: str | np.dtype[Any] = "float32",
-        vram_safety: float = 0.30,
+        vram_safety: float = 0.15,
         devices: Iterable[int] = (0,),
         time_dim: str | None = "time",
         point_indices: Iterable[int] | slice | None = None,
+        lazy: bool = False,
+        lazy_spatial_chunk: int = 256,
     ) -> None:
         self.dtype = np.dtype(dtype)
         if self.dtype not in (np.dtype("float32"), np.dtype("float64")):
@@ -141,9 +149,23 @@ class CUDAHeat:
         if len(set(self.devices)) != len(self.devices):
             raise ValueError("devices must not contain duplicates")
         self.device_id = self.devices[0]
+        self.lazy = bool(lazy)
         self.source_path = str(source) if not isinstance(source, xr.Dataset) else None
         self._owns_dataset = not isinstance(source, xr.Dataset)
-        self._dataset = xr.open_dataset(source) if self._owns_dataset else source
+        self._reader: NetCDFReader | None = None
+        if self._owns_dataset:
+            self._reader = NetCDFReader(
+                source,
+                variable=variable,
+                lazy=self.lazy,
+                time_dim=time_dim,
+                spatial_chunk=lazy_spatial_chunk,
+            )
+            self._dataset = self._reader.dataset
+        else:
+            if self.lazy:
+                raise ValueError("lazy=True requires a NetCDF path, not an already-open Dataset")
+            self._dataset = source
         if variable not in self._dataset:
             self.close()
             raise KeyError(f"variable {variable!r} is not present in the dataset")
@@ -159,10 +181,16 @@ class CUDAHeat:
             .stack(point=self.spatial_dims)
             .transpose(self.time_dim, "point")
         )
+        if self._reader is not None:
+            self._stacked = self._reader.rechunk_stacked(self._stacked)
         all_point_count = int(self._stacked.sizes["point"])
         self.point_indices = self._normalise_point_indices(point_indices, all_point_count)
         if point_indices is not None:
-            self._stacked = self._stacked.isel(point=self.point_indices)
+            # Preserve a contiguous slice for Dask-backed input.  Replacing it
+            # with its equivalent integer array turns this into fancy indexing
+            # and can make a small spatial subset depend on every source chunk.
+            selection = point_indices if isinstance(point_indices, slice) else self.point_indices
+            self._stacked = self._stacked.isel(point=selection)
         self.ntime = int(self._stacked.sizes[self.time_dim])
         self.npoints = int(self._stacked.sizes["point"])
         if self.ntime < 1 or self.npoints < 1:
@@ -205,7 +233,10 @@ class CUDAHeat:
     def close(self) -> None:
         """Close a NetCDF dataset opened by this instance."""
         if getattr(self, "_owns_dataset", False) and getattr(self, "_dataset", None) is not None:
-            self._dataset.close()
+            if self._reader is not None:
+                self._reader.close()
+            else:
+                self._dataset.close()
             self._dataset = None
 
     def _resolve_time_dim(self, requested: str | None) -> str:
@@ -267,16 +298,27 @@ class CUDAHeat:
     ) -> tuple[np.ndarray, float, float]:
         """Load one full-time spatial batch and separate I/O from preparation."""
         read_start = perf_counter()
-        selected = self._stacked.isel(point=slice(point_start, point_stop)).load()
-        host_read_seconds = perf_counter() - read_start
-        prepare_start = perf_counter()
         target_dtype = self.dtype if dtype is None else np.dtype(dtype)
         if target_dtype not in (np.dtype("float32"), np.dtype("float64")):
             raise ValueError("batch dtype must be float32 or float64")
-        values = np.asarray(selected.data, dtype=target_dtype)
+        if self._reader is not None:
+            values = self._reader.materialize_spatial_batch(
+                self._stacked,
+                point_start,
+                point_stop,
+                dtype=target_dtype,
+            )
+        else:
+            selected = self._stacked.isel(point=slice(point_start, point_stop)).load()
+            try:
+                values = np.ascontiguousarray(selected.data, dtype=target_dtype)
+            finally:
+                del selected
+        host_read_seconds = perf_counter() - read_start
+        prepare_start = perf_counter()
         if values.shape != (self.ntime, point_stop - point_start):
             raise RuntimeError("spatial batch lost part of its time series")
-        return np.ascontiguousarray(values), host_read_seconds, perf_counter() - prepare_start
+        return values, host_read_seconds, perf_counter() - prepare_start
 
     def run(
         self,
@@ -336,6 +378,7 @@ class CUDAHeat:
                         host_prepare_seconds,
                     )
                 except Exception as exc:
+                    del cpu_values
                     if not self._is_gpu_oom(exc):
                         raise
                     release_gpu_memory(self.device_id)
@@ -353,6 +396,7 @@ class CUDAHeat:
                         retries,
                     )
                     continue
+                del cpu_values
                 assembly_start = perf_counter()
                 self._store_batch(output.fields, buffers, point_start, point_stop)
                 exceedance_count[point_start:point_stop] = output.fields.pop("exceedance_count")
@@ -493,6 +537,7 @@ class CUDAHeat:
                         host_prepare_seconds,
                     )
                 except Exception as exc:
+                    del cpu_values
                     if not self._is_gpu_oom(exc):
                         raise
                     release_gpu_memory(self.device_id)
@@ -509,6 +554,7 @@ class CUDAHeat:
                         retries,
                     )
                     continue
+                del cpu_values
                 assembly_start = perf_counter()
                 event_parts.append(
                     EventRuns(
