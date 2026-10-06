@@ -1,0 +1,284 @@
+%% 
+%% Copyright 2019-2020 Elsevier Ltd
+%% 
+%% This file is part of the 'CAS Bundle'.
+%% --------------------------------------
+%% 
+%% It may be distributed under the conditions of the LaTeX Project Public
+%% License, either version 1.2 of this license or (at your option) any
+%% later version.  The latest version of this license is in
+%%    http://www.latex-project.org/lppl.txt
+%% and version 1.2 or later is part of all distributions of LaTeX
+%% version 1999/12/01 or later.
+%% 
+%% The list of all files belonging to the 'CAS Bundle' is
+%% given in the file `manifest.txt'.
+%% 
+%% Template article for cas-dc documentclass for 
+%% double column output.
+
+\makeatletter
+\def\input@path{{class/}}
+\makeatother
+
+%\documentclass[a4paper,fleqn,longmktitle]{cas-dc}
+\documentclass[a4paper,fleqn]{cas-dc}
+
+%\usepackage[numbers]{natbib}
+%\usepackage[authoryear]{natbib}
+\usepackage[authoryear,longnamesfirst]{natbib}
+
+%For full spanning figure
+\usepackage{subcaption}
+\usepackage{graphicx}
+\usepackage{minted}
+
+
+\usepackage{xcolor}
+
+\definecolor{RuleBlue}{RGB}{0,90,160}
+\usepackage{tabularx}
+% Preamble
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+
+\definecolor{codebg}{HTML}{F7F7F7}
+\definecolor{codeframe}{HTML}{D0D0D0}
+\definecolor{terminalbg}{HTML}{1E1E1E}
+\definecolor{terminalfg}{HTML}{E6E6E6}
+
+\setminted[python]{
+    fontsize=\scriptsize,
+    breaklines=true,
+    autogobble=true,
+    linenos=true,
+    numbersep=6pt,
+    frame=single,
+    framesep=2mm,
+    rulecolor=\color{codeframe},
+    bgcolor=codebg,
+    style=friendly
+}
+
+\setminted[text]{
+    fontsize=\scriptsize,
+    breaklines=true,
+    autogobble=true,
+    frame=single,
+    framesep=2mm,
+    rulecolor=\color{codeframe},
+    bgcolor=terminalbg,
+    style=friendly
+}
+
+\usepackage{stfloats}
+\usepackage{pdflscape}
+\usepackage{tikz}
+\usepackage{pgfplots}
+    \usetikzlibrary{
+        pgfplots.dateplot,
+    }
+
+
+
+\pgfplotsset{compat=1.18}
+\usepgfplotslibrary{polar}
+\usetikzlibrary{calc}
+
+\pgfplotsset{
+    colormap={mhwred}{
+        rgb255(0cm)=(255,245,240);
+        rgb255(1cm)=(254,224,210);
+        rgb255(2cm)=(252,187,161);
+        rgb255(3cm)=(252,106,74);
+        rgb255(4cm)=(222,45,38);
+        rgb255(5cm)=(103,0,13)
+    },
+    colormap={climblue}{
+        rgb255(0cm)=(247,251,255);
+        rgb255(1cm)=(222,235,247);
+        rgb255(2cm)=(198,219,239);
+        rgb255(3cm)=(107,174,214);
+        rgb255(4cm)=(49,130,189);
+        rgb255(5cm)=(8,48,107)
+    }
+}
+
+%%%Author definitions
+\def\tsc#1{\csdef{#1}{\textsc{\lowercase{#1}}\xspace}}
+\tsc{WGM}
+\tsc{QE}
+\tsc{EP}
+\tsc{PMS}
+\tsc{BEC}
+\tsc{DE}
+%%%
+
+
+\begin{document}
+\let\WriteBookmarks\relax
+\def\floatpagepagefraction{1}
+\def\textpagefraction{.001}
+
+% Short title
+\shorttitle{Marine Heat Waves and hoyurly scale}
+
+% Short author
+\shortauthors{M. Miani et~al.}
+
+% Main title of the paper
+\title [mode = title]{From Daily to Hourly Marine Heatwaves: A Taxonomy-Based, GPU-Accelerated Framework for Event Detection and Classification} 
+                   
+% Title footnote mark
+% eg: \tnotemark[1]
+%\tnotemark[1,2]
+
+% Title footnote 1.
+% eg: \tnotetext[1]{Title footnote text}
+% \tnotetext[<tnote number>]{<tnote text>} 
+\tnotetext[1]{This document is the results of the research
+   project funded by [].}
+
+
+
+
+\author[1]{Marco Miani}[%
+    orcid=0000-0003-4136-9640
+]
+\cormark[1]
+\ead{m.miani@cyi.ac.cy}
+\credit{Conceptualization, Methodology, Software, Writing - Original draft}
+
+
+\author[1]{Panos Hadjinicolaou}
+\credit{Supervision, Methodology, Writing - Review \& Editing}
+
+\author[1]{Yiannis Proestos}
+\credit{Supervision, Methodology, Writing - Review \& Editing}
+
+\author[1,2]{Jos Lelieveld}
+\credit{Supervision, Writing - Review \& Editing}
+
+\author[3]{Nadia Pinardi}
+\credit{Methodology, Writing - Review \& Editing}
+
+
+
+\affiliation[1]{organization={The Cyprus Institute},
+    addressline={20 Konstantinou Kavafi Street},
+    city={Nicosia},
+    postcode={2121},
+    country={Cyprus}
+}
+
+
+\affiliation[2]{organization={Max-Planck-Insitut},
+    addressline={Hahn-Meitner-Weg, 1},
+    city={Mainz},
+    postcode={55128},
+    country={Germany}
+}
+
+\affiliation[3]{organization={CMCC Foundation - Euro-Mediterranean Center on Climate Change},
+    addressline={},
+    city={},
+    postcode={},
+    country={Italy}
+}
+
+
+% Here goes the abstract
+\input{chapters/abstract/abstract}
+
+
+
+
+
+% Keywords
+% Each keyword is seperated by \sep
+\begin{keywords}
+MHWs, SST, EMME
+\end{keywords}
+
+
+\maketitle
+
+\section{Introduction}
+Some Introduction
+
+
+\section{Architecture}
+Some Architecture
+
+\section{Methodology}
+Some methodology
+
+\section{Results}
+Some Results
+
+\section{Conclusions}
+\noindent Some conclusions
+
+
+
+
+
+%Go new page
+\cleardoublepage
+%Add Appendix
+\appendix
+Some Appendix
+
+
+
+%\printcredits
+
+%% Loading bibliography style file
+
+
+% Loading bibliography database
+\bibliographystyle{class/cas-model2-names}
+\bibliography{class/cas-refs}
+
+
+%\vskip3pt
+
+% \bio{}
+% Author biography without author photo.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% \endbio
+
+% \bio{}
+% Author biography with author photo.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% \endbio
+
+% \bio{}
+% Author biography with author photo.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% Author biography. Author biography. Author biography.
+% \endbio
+
+\end{document}

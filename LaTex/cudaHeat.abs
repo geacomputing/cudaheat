@@ -1,0 +1,20 @@
+ \noindent Marine heatwaves (MHWs) are traditionally identified from daily Sea Surface Temperature (SST)
+records, yet this framework does not transfer directly to higher temporal resolution. At hourly scale,
+SST reveals sub-daily variability that is largely smoothed out in daily means, including intermittent
+threshold exceedances, short-lived interruptions, diurnal cycling, and nocturnal heat retention. These
+features complicate the definition of event continuity and persistence, but also provide an opportunity
+to examine the internal structure of marine heat extremes in greater detail. This study presents a methodology for detecting and analysing MHWs at hourly resolution. Events
+are identified through a duration--gap framework and subsequently decomposed into individual diurnal
+cycles, enabling a taxonomy based on intra-event morphology. This allows MHWs to be characterised not
+only by duration and intensity, but also by persistence, cycle-to-cycle evolution, and sub-daily dynamics
+that are not accessible from daily data. A sensitivity analysis is used to assess the robustness of the framework by systematically varying
+key methodological parameters and evaluating their influence on event identification, continuity, and
+internal structure. The methodology is tested using in situ hourly SST observations from the Dragonera
+buoy in the Balearic Islands, which provide a high-frequency observational reference for evaluating the
+temporal behaviour of detected events. The proposed approach is intended as a zoom-in diagnostic layer rather than a replacement for
+standard daily MHW detection: daily methods can first be used to identify relevant or extreme events,
+after which selected time windows can be re-analysed at hourly resolution to resolve their internal
+evolution. As a next step, the resulting SST-based event catalogue will be combined with high-frequency
+coastal air-temperature observations from Cyprus to investigate compound marine--atmospheric heat
+extremes and their role in amplifying coastal thermal stress, thereby outlining the conceptual
+traits of a so-called ``thermal cage''.
