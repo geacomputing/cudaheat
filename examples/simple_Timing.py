@@ -9,8 +9,9 @@ PATH = "/home/user/Documents/Gea/cudaheat/examples/sst_cudaheat.nc"
 
 timings = []
 steps = 10
-
-for batch in range(512 - steps, 512 + steps + 1):
+sweetspot= 512
+#for batch in range(512 - steps, 512 + steps + 1):
+for batch in [sweetspot, sweetspot*2, sweetspot*3, sweetspot*4, (sweetspot)+1]:
     cp.cuda.Device().synchronize()
     start = time.perf_counter()
 

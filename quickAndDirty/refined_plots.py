@@ -20,6 +20,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 from matplotlib.patches import FancyBboxPatch
 import numpy as np
 
@@ -36,10 +37,10 @@ IO_COLOR, H2D_COLOR, COMPUTE_COLOR, D2H_COLOR = ORANGE, PURPLE, BLUE, TEAL
 # They deliberately remain separate from the automated benchmark JSON because
 # this is a targeted one-point batch-width sweep around the storage-tile edge.
 MANUAL_STORAGE_ALIGNMENT_TIMINGS = (
-    (502, 34.970),
-    (503, 34.536),
-    (504, 34.541),
-    (505, 34.619),
+    # (502, 34.970),
+    # (503, 34.536),
+    # (504, 34.541),
+    # (505, 34.619),
     (506, 34.492),
     (507, 34.467),
     (508, 34.490),
@@ -53,10 +54,10 @@ MANUAL_STORAGE_ALIGNMENT_TIMINGS = (
     (516, 34.167),
     (517, 34.156),
     (518, 34.185),
-    (519, 34.172),
-    (520, 34.178),
-    (521, 34.316),
-    (522, 34.132),
+    # (519, 34.172),
+    # (520, 34.178),
+    # (521, 34.316),
+    # (522, 34.132),
 )
 
 RESULTS_DIR: Path | None = None
@@ -706,7 +707,7 @@ def plot_storage_tile_alignment() -> None:
 
     fig = frame(
         "The 512-point storage-alignment sweet spot",
-        "Manual full-detection timing sweep over consecutive, discrete batch sizes",
+        "Sweeping over consecutive, discrete batch sizes",
         11,
     )
     ax = axis(fig, bounds=(0.115, 0.270, 0.770, 0.345))
@@ -715,7 +716,7 @@ def plot_storage_tile_alignment() -> None:
     ax.scatter(
         [fastest_batch],
         [fastest_time],
-        s=160,
+        s=190,
         color=TEAL,
         edgecolor=WHITE,
         linewidth=2.4,
@@ -729,22 +730,23 @@ def plot_storage_tile_alignment() -> None:
         ylim=(fastest_time * 0.82, max(times) * 1.08),
         xticks=batches,
         xlabel="Requested GPU batch size (spatial points; every value shown)",
-        ylabel="Complete detection time (s)",
+        ylabel="Full pipeline execution (s)",
     )
-    ax.tick_params(axis="x", labelsize=7.5, pad=7)
+    ax.tick_params(axis="x", labelsize=11.5, pad=9)
     for label, batch in zip(ax.get_xticklabels(), batches, strict=True):
         if batch == fastest_batch:
             label.set(color=TEAL, weight="bold")
 
+    ax.tick_params(axis="y", labelsize=11.5, pad=9)
     ax.annotate(
         "Exact storage-tile match\n512 points · 20.2 s",
         xy=(fastest_batch, fastest_time),
         xytext=(515.2, 24.2),
         textcoords="data",
         arrowprops={"arrowstyle": "-", "color": TEAL, "lw": 1.6},
-        bbox={"boxstyle": "round,pad=0.42", "fc": WHITE, "ec": TEAL, "lw": 1.1},
+        bbox={"boxstyle": "square,pad=0.42", "fc": WHITE, "ec": TEAL, "lw": 1.1},
         color=INK,
-        fontsize=10,
+        fontsize=12,
         weight="bold",
         va="center",
     )
@@ -762,7 +764,7 @@ def plot_storage_tile_alignment() -> None:
     fig.text(
         0.075,
         0.671,
-        "MANUAL DISCRETE BATCH-SIZE SWEEP",
+        "DISCRETE BATCH-SIZE SWEEP",
         color=MUTED,
         fontsize=10,
         weight="bold",
@@ -772,7 +774,7 @@ def plot_storage_tile_alignment() -> None:
         0.671,
         f"{speedup_percent:.0f}% FASTER AT 512",
         color=TEAL,
-        fontsize=10,
+        fontsize=13,
         weight="bold",
         ha="right",
     )
@@ -782,6 +784,123 @@ def plot_storage_tile_alignment() -> None:
         "manual full-detection timing sweep, batch sizes 502–522",
     )
     save(fig, "benchmark_11_storage_tile_alignment.png")
+
+
+def plot_batch_bottleneck_evolution() -> None:
+    """Show stage shares and wall time across successful fixed batch sizes."""
+    data = sorted(
+        (
+            row
+            for row in _scenario("batch_size")
+            if row["requested_batch_size"] is not None
+            and int(row["requested_batch_size"]) >= 512
+            and float(row.get("oom_retries_mean") or 0) == 0
+            and float(row.get("oom_retries_max") or 0) == 0
+        ),
+        key=lambda row: int(row["requested_batch_size"]),
+    )
+    if not data:
+        raise ValueError("No successful fixed-batch records are available")
+
+    batches = np.asarray([int(row["requested_batch_size"]) for row in data])
+    wall_time = np.asarray([float(row["pipeline_wall_seconds_mean"]) for row in data])
+    components = (
+        ("Disk / host read", "host_read_seconds_mean", IO_COLOR),
+        ("Host → GPU", "transfer_to_device_seconds_mean", H2D_COLOR),
+        ("GPU compute", "gpu_compute_seconds_mean", COMPUTE_COLOR),
+        ("GPU → host", "transfer_from_device_seconds_mean", D2H_COLOR),
+    )
+    stage_seconds = np.asarray([[float(row[field]) for row in data] for _, field, _ in components])
+    shares = stage_seconds / stage_seconds.sum(axis=0, keepdims=True) * 100
+    batch_gib = batches * int(MANIFEST["ntime"]) * np.dtype("float32").itemsize / 2**30
+
+    fig = frame(
+        "How batching shifts the bottleneck",
+        "Fixed storage-aligned GPU batches: component mix, input volume, and full-pipeline time",
+        12,
+    )
+    ax = axis(fig, bounds=(0.125, 0.270, 0.620, 0.340))
+    stacked = ax.stackplot(
+        batches,
+        shares,
+        colors=[color for _, _, color in components],
+        alpha=0.94,
+        zorder=2,
+    )
+    ax.scatter(
+        batches,
+        np.full(batches.size, 94.0),
+        s=140 + batch_gib * 600,
+        facecolor=WHITE,
+        edgecolor=TEAL,
+        linewidth=1.8,
+        alpha=0.98,
+        zorder=5,
+    )
+    ax.set(
+        xlim=(batches[0] - 0.10 * (batches[-1] - batches[0]), batches[-1] * 1.08),
+        ylim=(0, 100),
+        xticks=batches,
+        xlabel="Requested GPU batch size (spatial points)",
+        ylabel="Share of measured stages (%)",
+    )
+    ax.tick_params(axis="x", labelsize=10)
+
+    right = ax.twinx()
+    right.patch.set_visible(False)
+    (wall_line,) = right.plot(
+        batches,
+        wall_time,
+        color=INK,
+        lw=2.4,
+        ls=(0, (4, 3)),
+        marker="D",
+        ms=6.5,
+        mfc=WHITE,
+        mec=INK,
+        mew=1.4,
+        zorder=6,
+    )
+    right.set(ylim=(0, max(wall_time) * 1.18), ylabel="Full-pipeline wall time (s)")
+    right.tick_params(axis="y", length=0, pad=10, labelcolor=INK, labelsize=10)
+    right.spines["top"].set_visible(False)
+    right.spines["right"].set_visible(False)
+
+    bubble_legend = Line2D(
+        [], [], marker="o", ls="", mfc=WHITE, mec=TEAL, mew=1.8, ms=9, color=TEAL
+    )
+    handles = [*stacked, bubble_legend, wall_line]
+    labels = [label for label, _, _ in components] + [
+        "Bubble area: float32 batch input volume",
+        "Full-pipeline wall time",
+    ]
+    fig.legend(
+        handles,
+        labels,
+        loc="center left",
+        bbox_to_anchor=(0.250, 0.670),
+        ncol=3,
+        frameon=False,
+        fontsize=8.8,
+        columnspacing=1.15,
+        handletextpad=0.45,
+    )
+    fig.text(0.075, 0.671, "NORMALIZED STAGE MIX", color=MUTED, fontsize=10, weight="bold")
+    fig.text(
+        0.922,
+        0.671,
+        f"{batch_gib[0]:.2f}–{batch_gib[-1]:.2f} GiB PER BATCH",
+        color=TEAL,
+        fontsize=9.8,
+        weight="bold",
+        ha="right",
+    )
+    caption(
+        fig,
+        "Each point is a successful fixed batch; bubbles scale with the float32 input carried by one GPU batch.",
+        "performance_summary.json + run_manifest.json",
+    )
+    save(fig, "benchmark_12_batch_bottleneck_evolution.png")
 
 
 def _dashboard_metric(fig: plt.Figure, x: float, value: str, label: str) -> None:
@@ -819,7 +938,7 @@ def plot_cudaheat_dashboard() -> None:
     )
     metric_x = (0.075, 0.250, 0.425, 0.600, 0.775)
     metrics = (
-        (f"{full['npoints']:,}", "SPATIAL POINTS"),
+        (f"{full['npoints']:,}", "SPATIAL POINTS (on WATER)"),
         (f"{pipeline_seconds:.1f} s", "FULL PIPELINE"),
         (f"{full['gpu_compute_seconds_mean']:.1f} s", "GPU COMPUTE"),
         (f"{io_share:.0f}%", "PIPELINE IN HOST I/O"),
@@ -945,6 +1064,7 @@ PLOT_REGISTRY = {
     "repeatability": plot_repeatability,
     "cudaheat_dashboard": plot_cudaheat_dashboard,
     "storage_tile_alignment": plot_storage_tile_alignment,
+    "batch_bottleneck_evolution": plot_batch_bottleneck_evolution,
 }
 
 

@@ -28,7 +28,7 @@ txt(.052,.824,'Computational efficiency, memory behavior, and scalability of hou
 # Dataset banner
 box(.052,.622,.896,.155)
 txt(.072,.745,'BENCHMARK DATASET',8.4,TEAL,'bold')
-metrics=[('41,377','SPATIAL GRID POINTS','257 × 161'),('~8 years','HOURLY SST RECORD','continuous; no gaps'),('~2.9 B','TEMPERATURE VALUES','~70,000 hourly steps'),('11.6 GB','FLOAT32 INPUT','~23.2 GB in float64')]
+metrics=[('22,083','SPATIAL GRID POINTS','257 × 161'),('~8 years','HOURLY SST RECORD','continuous; no gaps'),('~2.9 B','TEMPERATURE VALUES','~70,000 hourly steps'),('11.6 GB','FLOAT32 INPUT','~23.2 GB in float64')]
 for j,(big,lab,detail) in enumerate(metrics):
     x=.073+j*.219
     if j:
@@ -67,6 +67,6 @@ txt(.052,.075,'NEXT  →  Benchmark diagnostics, pipeline bottlenecks, speedup a
 txt(.948,.075,'COPERNICUS MARINE  ·  CUDAHeat',7.5,MUTED,ha='right')
 
 fig.savefig(OUT/'cudaheat_benchmark_intro.png',dpi=DPI,bbox_inches=None,pad_inches=0)
-fig.savefig(OUT/'cudaheat_benchmark_intro_preview.png',dpi=120,bbox_inches=None,pad_inches=0)
+#fig.savefig(OUT/'cudaheat_benchmark_intro_preview.png',dpi=500,bbox_inches=None,pad_inches=0)
 #plt.close(fig)
 print('Saved slide and preview')

@@ -128,14 +128,14 @@ ax_globe.set_facecolor("none")
 
 # Oceans
 ax_globe.add_feature(
-    cfeature.OCEAN.with_scale("110m"),
+    cfeature.OCEAN.with_scale("10m"),
     facecolor="#DCEAF2",
     zorder=0
 )
 
 # Continents
 ax_globe.add_feature(
-    cfeature.LAND.with_scale("110m"),
+    cfeature.LAND.with_scale("10m"),
     facecolor="black",
     edgecolor="#777777",
     linewidth=0.4,
@@ -189,7 +189,7 @@ ax_globe.plot(
 
 geometry_text = (
     f"Grid: {nx} × {ny}\n"
-    f"Points: {npoints:,}\n"
+    f"Points: {npoints:,} (LAND+WATER)\n"
     f"Δx: {dx:.4f}°\n"
     f"Δy: {dy:.4f}°\n"
     f"\n"
@@ -286,14 +286,16 @@ if False:
 # Save and display
 # ============================================================
 
+from pathlib import Path
+
+output = Path(__file__).resolve().parent / "Map.png"
+
+
 plt.savefig(
-    "Map.png",
-    dpi=300,
+    output,
+    dpi=500,
     transparent=False,
     bbox_inches=None,
     pad_inches=0
 )
 
-plt.show()
-
-plt.show()

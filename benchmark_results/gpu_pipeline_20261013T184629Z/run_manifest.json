@@ -1,0 +1,71 @@
+{
+  "description": "GPU-only benchmark of CUDAHeat's numerical preprocessing pipeline.",
+  "purpose": "Measure GPU execution, required pipeline overhead, VRAM use, precision, and numerical consistency.",
+  "methodology": "CPU timing is intentionally absent. CPU float64 is only an untimed numerical-validation reference.",
+  "units": {
+    "*_seconds": "seconds",
+    "gpu_*_values_per_second": "values per second",
+    "*_vram_bytes": "bytes",
+    "safety_fraction": "fraction of runtime-free VRAM reserved",
+    "npoints": "spatial points",
+    "ntime": "hourly samples",
+    "percentile": "fraction"
+  },
+  "benchmark_name": "CUDAHeat GPU Pipeline Benchmark",
+  "benchmark_id": "gpu_pipeline",
+  "started_utc": "2026-10-13T19:20:06.837677+00:00",
+  "scope": "Numerical preprocessing only; marine-heatwave taxonomy and event classification are excluded.",
+  "dataset_path": "/home/user/Documents/Gea/cudaheat/examples/sst_cudaheat.nc",
+  "variable": "analysed_sst",
+  "ntime": 68016,
+  "dataset_npoints": 22083,
+  "campaign_npoints": 22083,
+  "baseline": [
+    2019,
+    2025
+  ],
+  "percentile": 0.9,
+  "smooth_window_hours": 120,
+  "input_strategy": "Lazy Dask-backed input for normal out-of-core operation; no lazy-versus-eager comparison is run.",
+  "point_schedule": [
+    32,
+    128,
+    512,
+    2000,
+    8000,
+    22083
+  ],
+  "batch_schedule": [
+    512,
+    1024,
+    1536,
+    2048
+  ],
+  "repeats": 5,
+  "warmup_runs": 1,
+  "vram_safety_default": 0.15,
+  "vram_safety_values": [
+    0.0,
+    0.15,
+    0.3,
+    0.45
+  ],
+  "gpu": {
+    "device_id": 0,
+    "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+    "total_bytes": 8175878144,
+    "free_bytes": 6982139904,
+    "used_bytes": 1193738240,
+    "compute_capability": [
+      8,
+      9
+    ]
+  },
+  "cudaheat_version": "0.1.0",
+  "python_version": "3.14.1 | packaged by Anaconda, Inc. | (main, Dec  3 2025, 21:29:33) [GCC 14.3.0]",
+  "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.39",
+  "numpy_version": "2.3.5",
+  "cupy_version": "14.2.0",
+  "cuda_runtime_version": 13020,
+  "cuda_driver_version": 13000
+}

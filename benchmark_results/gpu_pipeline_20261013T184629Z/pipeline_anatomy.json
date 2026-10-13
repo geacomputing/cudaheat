@@ -1,0 +1,70 @@
+{
+  "description": "Full-domain pipeline stage timings.",
+  "purpose": "Explain where full-pipeline seconds are spent.",
+  "methodology": "Mean of automatic-batch float32 scale-test records.",
+  "units": {
+    "*_seconds": "seconds",
+    "gpu_*_values_per_second": "values per second",
+    "*_vram_bytes": "bytes",
+    "safety_fraction": "fraction of runtime-free VRAM reserved",
+    "npoints": "spatial points",
+    "ntime": "hourly samples",
+    "percentile": "fraction"
+  },
+  "records": [
+    {
+      "npoints": 22083,
+      "component": "Host read",
+      "seconds": 20.763312717601366,
+      "pipeline_wall_seconds": 26.459284314201795
+    },
+    {
+      "npoints": 22083,
+      "component": "Host preparation",
+      "seconds": 8.217591675929725e-06,
+      "pipeline_wall_seconds": 26.459284314201795
+    },
+    {
+      "npoints": 22083,
+      "component": "GPU allocation",
+      "seconds": 0.013617494401114528,
+      "pipeline_wall_seconds": 26.459284314201795
+    },
+    {
+      "npoints": 22083,
+      "component": "GPU metadata transfer",
+      "seconds": 0.019500186995719558,
+      "pipeline_wall_seconds": 26.459284314201795
+    },
+    {
+      "npoints": 22083,
+      "component": "Host to GPU transfer",
+      "seconds": 0.4609298419964034,
+      "pipeline_wall_seconds": 26.459284314201795
+    },
+    {
+      "npoints": 22083,
+      "component": "GPU compute",
+      "seconds": 4.882306968688964,
+      "pipeline_wall_seconds": 26.459284314201795
+    },
+    {
+      "npoints": 22083,
+      "component": "GPU to host transfer",
+      "seconds": 0.0175298921923968,
+      "pipeline_wall_seconds": 26.459284314201795
+    },
+    {
+      "npoints": 22083,
+      "component": "Result assembly",
+      "seconds": 0.0010983430009218864,
+      "pipeline_wall_seconds": 26.459284314201795
+    },
+    {
+      "npoints": 22083,
+      "component": "Unattributed pipeline overhead",
+      "seconds": 0.30098065173323363,
+      "pipeline_wall_seconds": 26.459284314201795
+    }
+  ]
+}
