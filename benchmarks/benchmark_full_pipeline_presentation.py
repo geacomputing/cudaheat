@@ -725,7 +725,7 @@ def _render_figures(
 
 def _save(fig: Any, output: Path, name: str) -> None:
     fig.savefig(output / f"{name}.png", dpi=300, bbox_inches="tight")
-    fig.savefig(output / f"{name}.svg", bbox_inches="tight")
+    #fig.savefig(output / f"{name}.svg", bbox_inches="tight")
     fig.clear()
 
 

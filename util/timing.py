@@ -19,6 +19,7 @@ def log_elapsed_time(label: str, started_at: float, /, **details: Any) -> float:
     source = _caller_location()
     context = " ".join(f"{name}={value}" for name, value in details.items())
     suffix = f" | {context}" if context else ""
+  
     print(
         f"[CUDAHeat timing] {label} | elapsed={elapsed:.3f}s | source={source}{suffix}",
         flush=True,

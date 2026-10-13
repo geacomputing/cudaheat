@@ -34,14 +34,15 @@ if False:
 t0 = time.perf_counter()
 
 final= "/home/user/Documents/Gea/cudaheat/examples/sst_cudaheat.nc"
-with CUDAHeat(final, variable="analysed_sst") as hw:
+with CUDAHeat(final, variable="analysed_sst", timing_logging=False) as hw:
     result = hw.detect(
         baseline=(2019, 2023),
         percentile=.90,
         smooth_window_hours=24*7,
         min_duration_hours=120,
         max_internal_gap_hours=6, 
-        join_gap_hours=48
+        join_gap_hours=48, 
+        batch_size=512,
     )
 
 

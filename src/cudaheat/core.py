@@ -109,6 +109,10 @@ class CUDAHeat:
         366-day month/day/hour bins. ``"dayofyear"`` reproduces HourWave's
         day-of-year hourly grouping and, when smoothing options are omitted,
         its 360-hour window with a 24-hour minimum period.
+    timing_logging:
+        Print per-batch disk-I/O and host-to-GPU transfer timing records.
+        Defaults to ``True`` for backwards compatibility. Disable it for
+        quiet production runs; telemetry is still collected in the result.
     """
 
     _RETURNABLE_FIELDS = frozenset(
@@ -137,6 +141,7 @@ class CUDAHeat:
         lazy: bool = False,
         lazy_spatial_chunk: int = 256,
         calendar_mode: str = CALENDAR_MODE_MONTH_DAY_HOUR,
+        timing_logging: bool = True,
     ) -> None:
         self.dtype = np.dtype(dtype)
         if self.dtype not in (np.dtype("float32"), np.dtype("float64")):
@@ -151,6 +156,7 @@ class CUDAHeat:
         self.lazy = bool(lazy)
         self.lazy_spatial_chunk = int(lazy_spatial_chunk)
         self.calendar_mode = str(calendar_mode)
+        self.timing_logging = bool(timing_logging)
         self.source_path = str(source) if not isinstance(source, xr.Dataset) else None
         self._owns_dataset = not isinstance(source, xr.Dataset)
         self._reader: NetCDFReader | None = None
@@ -243,7 +249,11 @@ class CUDAHeat:
             self.batch_estimate.bytes_per_point / 2**20,
         )
         if len(self.devices) > 1:
-            logger.info("Selected devices %s; batches currently execute sequentially on device %d", self.devices, self.device_id)
+            logger.info(
+                "Selected devices %s; batches currently execute sequentially on device %d",
+                self.devices,
+                self.device_id,
+            )
 
     def __enter__(self) -> "CUDAHeat":
         return self
@@ -269,8 +279,7 @@ class CUDAHeat:
         datetime_dims = [
             dim
             for dim in self._source.dims
-            if dim in self._source.coords
-            and np.issubdtype(self._source[dim].dtype, np.datetime64)
+            if dim in self._source.coords and np.issubdtype(self._source[dim].dtype, np.datetime64)
         ]
         if len(datetime_dims) == 1:
             return datetime_dims[0]
@@ -335,10 +344,10 @@ class CUDAHeat:
                 values = np.ascontiguousarray(selected.data, dtype=target_dtype)
             finally:
                 del selected
-        host_read_seconds = perf_counter() - read_start
-        log_elapsed_time(
+        host_read_seconds = log_elapsed_time(
             "disk-to-CPU batch I/O",
             read_start,
+            enabled=self.timing_logging,
             points=f"{point_start}:{point_stop}",
             time_steps=self.ntime,
             host_bytes=values.nbytes,
@@ -382,7 +391,9 @@ class CUDAHeat:
         point_start = 0
         if batch_size is not None and batch_size < 1:
             raise ValueError("batch_size must be positive")
-        active_batch_size = min(batch_size, self.npoints) if batch_size is not None else self.batch_size
+        active_batch_size = (
+            min(batch_size, self.npoints) if batch_size is not None else self.batch_size
+        )
 
         while point_start < self.npoints:
             current_size = min(active_batch_size, self.npoints - point_start)
@@ -396,8 +407,8 @@ class CUDAHeat:
                     self.ntime,
                     self.device_id,
                 )
-                cpu_values, host_read_seconds, host_prepare_seconds = self._load_spatial_batch_profiled(
-                    point_start, point_stop
+                cpu_values, host_read_seconds, host_prepare_seconds = (
+                    self._load_spatial_batch_profiled(point_start, point_stop)
                 )
                 try:
                     output, batch_telemetry = self._execute_gpu_batch(
@@ -419,7 +430,9 @@ class CUDAHeat:
                         raise
                     release_gpu_memory(self.device_id)
                     if current_size == 1:
-                        raise InsufficientVRAMError(self._single_series_message(self.batch_estimate)) from exc
+                        raise InsufficientVRAMError(
+                            self._single_series_message(self.batch_estimate)
+                        ) from exc
                     retries += 1
                     current_size = reduced_batch_size(current_size)
                     active_batch_size = current_size
@@ -558,15 +571,17 @@ class CUDAHeat:
         event_parts: list[EventRuns] = []
         telemetry: list[BatchTelemetry] = []
         point_start = 0
-        active_batch_size = min(batch_size, self.npoints) if batch_size is not None else self.batch_size
+        active_batch_size = (
+            min(batch_size, self.npoints) if batch_size is not None else self.batch_size
+        )
 
         while point_start < self.npoints:
             current_size = min(active_batch_size, self.npoints - point_start)
             retries = 0
             while True:
                 point_stop = point_start + current_size
-                cpu_values, host_read_seconds, host_prepare_seconds = self._load_spatial_batch_profiled(
-                    point_start, point_stop
+                cpu_values, host_read_seconds, host_prepare_seconds = (
+                    self._load_spatial_batch_profiled(point_start, point_stop)
                 )
                 try:
                     output, batch_telemetry = self._execute_gpu_detection_batch(
@@ -591,7 +606,9 @@ class CUDAHeat:
                         raise
                     release_gpu_memory(self.device_id)
                     if current_size == 1:
-                        raise InsufficientVRAMError(self._single_series_message(self.batch_estimate)) from exc
+                        raise InsufficientVRAMError(
+                            self._single_series_message(self.batch_estimate)
+                        ) from exc
                     retries += 1
                     current_size = reduced_batch_size(current_size)
                     active_batch_size = current_size
@@ -693,6 +710,7 @@ class CUDAHeat:
             transfer_to_device = log_elapsed_time(
                 "CPU-to-GPU batch transfer",
                 transfer_start,
+                enabled=self.timing_logging,
                 points=f"{point_start}:{point_stop}",
                 time_steps=cpu_values.shape[0],
                 host_bytes=cpu_values.nbytes,
@@ -788,6 +806,7 @@ class CUDAHeat:
             transfer_to_device = log_elapsed_time(
                 "CPU-to-GPU batch transfer",
                 transfer_start,
+                enabled=self.timing_logging,
                 points=f"{point_start}:{point_stop}",
                 time_steps=cpu_values.shape[0],
                 host_bytes=cpu_values.nbytes,
@@ -945,7 +964,9 @@ class CUDAHeat:
         data["event_count"] = self._to_dataarray(
             event_count, "event_count", exclude_point_coordinates={"original_flat_index"}
         )
-        data["stop_index"].attrs["description"] = "Exclusive time index; event interval is [start, stop)."
+        data["stop_index"].attrs["description"] = (
+            "Exclusive time index; event interval is [start, stop)."
+        )
         return data
 
     def _to_dataarray(
@@ -957,7 +978,9 @@ class CUDAHeat:
         exclude_point_coordinates: set[str] | None = None,
     ) -> xr.DataArray:
         if leading_dim is None:
-            array = xr.DataArray(values, dims=("point",), coords={"point": self._stacked["point"]}, name=name)
+            array = xr.DataArray(
+                values, dims=("point",), coords={"point": self._stacked["point"]}, name=name
+            )
         elif leading_dim == self.time_dim:
             array = xr.DataArray(
                 values,
@@ -1013,4 +1036,6 @@ class CUDAHeat:
         cp = cupy()
         if isinstance(exc, cp.cuda.memory.OutOfMemoryError):
             return True
-        return isinstance(exc, cp.cuda.runtime.CUDARuntimeError) and getattr(exc, "status", None) == 2
+        return (
+            isinstance(exc, cp.cuda.runtime.CUDARuntimeError) and getattr(exc, "status", None) == 2
+        )

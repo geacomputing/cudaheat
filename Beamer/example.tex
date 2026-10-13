@@ -1,0 +1,108 @@
+\documentclass[aspectratio=169]{beamer}
+\usetheme{CUDAHeat}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\begin{document}
+\begin{CUDAHeatFrame}
+  {GPU pipeline scaling}
+  {Compute, device, and complete-pipeline time \enspace\textperiodcentered\enspace full hourly record}
+  {Host I/O and transfers remain visible beside GPU kernel time.}
+  {Illustrative data only}
+  \CUDAHeatPanelLabel{GPU-ONLY MEASUREMENTS}
+  \CUDAHeatPlace{0.125}{0.267}{%
+    \begin{tikzpicture}
+    \begin{axis}[width=0.735\paperwidth,height=0.3\paperheight,
+      scale only axis,xmode=log,xmin=700,xmax=180000,ymin=0,ymax=160,
+      axis line style={draw=none},tick style={draw=none},minor tick num=0,
+      ymajorgrids,grid style={CUDAHeatBorder,line width=0.5bp},
+      tick label style={font=\fontsize{10}{12}\selectfont,text=CUDAHeatMuted},
+      label style={font=\fontsize{11}{13}\selectfont,text=CUDAHeatInk},
+      xtick={1000,10000,100000},xticklabels={1\,000,10\,000,100\,000},
+      xlabel={Spatial points processed},ylabel={Execution time (s)},
+      legend style={at={(0,1.07)},anchor=south west,draw=none,
+        fill=none,font=\fontsize{10}{12}\selectfont},legend columns=3]
+      \addplot[CUDAHeatBlue,line width=3bp,mark=o,
+        mark options={fill=CUDAHeatWhite,line width=2bp}] coordinates
+        {(1000,1)(10000,3)(100000,11)};
+      \addlegendentry{GPU compute}
+      \addplot[CUDAHeatTeal,line width=3bp,mark=square,
+        mark options={fill=CUDAHeatWhite,line width=2bp}] coordinates
+        {(1000,1.3)(10000,4)(100000,13)};
+      \addlegendentry{GPU device end-to-end}
+      \addplot[CUDAHeatOrange,line width=3bp,mark=diamond,
+        mark options={fill=CUDAHeatWhite,line width=2bp}] coordinates
+        {(1000,5)(10000,25)(100000,143)};
+      \addlegendentry{Complete pipeline}
+    \end{axis}
+    \end{tikzpicture}}
+\end{CUDAHeatFrame}
+
+
+
+
+
+\begin{CUDAHeatFrame}
+  {A reusable presentation theme}
+  {The same canvas, palette, font, and visual hierarchy as the Python figures}
+  {Use native LaTeX content within the benchmark layout.}
+  {Theme demonstration}
+  \CUDAHeatPanelLabel{NATIVE BEAMER CONTENT}
+
+  \CUDAHeatCanvas{
+  \foreach \x/\value/\label in {
+    0.075/{12,000}/{SPATIAL POINTS},
+    0.250/{143.3 s}/{FULL PIPELINE},
+    0.425/{10.6 s}/{GPU COMPUTE},
+    0.600/{92\%}/{HOST I/O},
+    0.775/{99.999\%}/{MASK AGREEMENT}
+  } {
+    \draw[
+      fill=CUDAHeatBG,
+      draw=CUDAHeatBorder,
+      line width=0.8bp,
+      rounded corners=6bp
+    ] (\x-0.007,0.611) rectangle (\x+0.157,0.699);
+
+    \node[
+      anchor=west, inner sep=0pt,
+      text=CUDAHeatTeal,
+      font=\sffamily\bfseries\fontsize{16}{19}\selectfont
+    ] at (\x+0.013,0.659) {\value};
+
+    \node[
+      anchor=west, inner sep=0pt,
+      text=CUDAHeatMuted,
+      font=\sffamily\fontsize{8.6}{10}\selectfont
+    ] at (\x+0.013,0.633) {\label};
+  }
+}
+
+\newcounter{density}
+\setcounter{density}{30}
+\begin{tikzpicture}[remember picture,overlay]
+  \begin{scope}[
+    shift={(current page.south west)},
+    xshift=2cm,
+    yshift=3.5cm,
+    scale=.5
+  ]
+    \def\couleur{CUDAHeatBlue}
+    \path[coordinate] (0,0)  coordinate(A)
+                ++( 60:12cm) coordinate(B)
+                ++(-60:12cm) coordinate(C);
+    \draw[fill=\couleur!\thedensity] (A) -- (B) -- (C) -- cycle;
+    \foreach \x in {1,...,15}{%
+        \pgfmathsetcounter{density}{\thedensity+10}
+        \setcounter{density}{\thedensity}
+        \path[coordinate] coordinate(X) at (A){};
+        \path[coordinate] (A) -- (B) coordinate[pos=.15](A)
+                            -- (C) coordinate[pos=.15](B)
+                            -- (X) coordinate[pos=.15](C);
+        \draw[fill=\couleur!\thedensity] (A)--(B)--(C)--cycle;
+    }
+  \node [font=\sffamily\bfseries\fontsize{16}{19}\selectfont] at (20, 10) {Some parametric custom figure};  
+  \end{scope}
+\end{tikzpicture}
+
+\end{CUDAHeatFrame}
+\end{document}

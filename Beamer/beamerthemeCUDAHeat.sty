@@ -1,0 +1,84 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{beamerthemeCUDAHeat}[2026/10/13 CUDAHeat benchmark theme]
+\RequirePackage{iftex}
+\ifPDFTeX
+  \PackageError{beamerthemeCUDAHeat}{Use XeLaTeX or LuaLaTeX}{DejaVu Sans requires fontspec.}
+\else
+  \RequirePackage{fontspec}
+  \setsansfont{DejaVu Sans}
+  \setmainfont{DejaVu Sans}
+\fi
+\RequirePackage{tikz}
+\usetikzlibrary{arrows,intersections}
+\usetikzlibrary{scopes}
+
+\RequirePackage{ifthen}
+
+
+\RequirePackage{sansmath}
+\sansmath
+\definecolor{CUDAHeatBG}{HTML}{F7F9FB}
+\definecolor{CUDAHeatWhite}{HTML}{FFFFFF}
+\definecolor{CUDAHeatInk}{HTML}{17283B}
+\definecolor{CUDAHeatMuted}{HTML}{617287}
+\definecolor{CUDAHeatBlue}{HTML}{2475B6}
+\definecolor{CUDAHeatTeal}{HTML}{087F8C}
+\definecolor{CUDAHeatOrange}{HTML}{E36B45}
+\definecolor{CUDAHeatPurple}{HTML}{7567A4}
+\definecolor{CUDAHeatBorder}{HTML}{DDE6ED}
+\definecolor{CUDAHeatLight}{HTML}{B3C2D0}
+% The physical canvas matches the Python source, including point-size typography.
+\geometry{paperwidth=13.32in,paperheight=7.4925in}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{headline}{}
+\setbeamertemplate{footline}{}
+\setbeamertemplate{frametitle}{}
+\setbeamercolor{normal text}{fg=CUDAHeatInk,bg=CUDAHeatBG}
+\setbeamercolor{structure}{fg=CUDAHeatTeal}
+\setbeamercolor{alerted text}{fg=CUDAHeatOrange}
+\setbeamercolor{block title}{fg=CUDAHeatTeal,bg=CUDAHeatBG}
+\setbeamercolor{block body}{fg=CUDAHeatInk,bg=CUDAHeatWhite}
+\setbeamerfont{normal text}{family=\sffamily,size=\fontsize{11}{13}\selectfont}
+\setbeamertemplate{itemize item}{\color{CUDAHeatTeal}\small$\blacksquare$}
+\newcommand{\CUDAHeatBrand}{CUDAHeat / GPU PIPELINE BENCHMARK}
+\newcommand{\CUDAHeatSetBrand}[1]{\renewcommand{\CUDAHeatBrand}{#1}}
+% Place a baseline at the source figure's normalized (x,y) coordinate.
+\newcommand{\CUDAHeatText}[5]{%
+  \node[anchor=base west,inner sep=0pt,text=#3,
+        font=\sffamily\fontsize{#4}{#4}\selectfont]
+        at (#1,#2) {#5};}
+% All coordinates are fractions of the canvas, origin at bottom left.
+\newcommand{\CUDAHeatCanvas}[1]{%
+  \begin{tikzpicture}[remember picture,overlay,
+    shift={(current page.south west)},x=\paperwidth,y=\paperheight]
+    #1
+  \end{tikzpicture}}
+\newcommand{\CUDAHeatChrome}[4]{%
+  \CUDAHeatCanvas{%
+    \fill[CUDAHeatBG] (0,0) rectangle (1,1);
+    % Includes FancyBboxPatch's 0.007 padding from the original source.
+    \draw[fill=CUDAHeatWhite,draw=CUDAHeatBorder,line width=0.85bp,
+      rounded corners=8.6bp] (0.049,0.156) rectangle (0.951,0.718);
+    \CUDAHeatText{0.067}{0.915}{CUDAHeatTeal}{11.2}{\bfseries\CUDAHeatBrand}
+    \CUDAHeatText{0.067}{0.834}{CUDAHeatInk}{28}{\bfseries #1}
+    \CUDAHeatText{0.068}{0.775}{CUDAHeatMuted}{12.2}{#2}
+    \CUDAHeatText{0.068}{0.105}{CUDAHeatTeal}{10.2}{\bfseries THE TAKEAWAY}
+    \CUDAHeatText{0.195}{0.105}{CUDAHeatInk}{11.2}{#3}
+    \CUDAHeatText{0.068}{0.053}{CUDAHeatMuted}{9.2}{Source: #4
+      \enspace\textperiodcentered\enspace measured GPU benchmark results}
+  }}
+% Arguments: title, subtitle, takeaway, source. Body accepts normal LaTeX.
+\newenvironment{CUDAHeatFrame}[4]{%
+  \setbeamertemplate{background}{\CUDAHeatChrome{#1}{#2}{#3}{#4}}%
+  \begin{frame}[plain,environment=CUDAHeatFrame]
+}{\end{frame}}
+% Absolute placement for chart labels, dashboards, and multiple panels.
+\newcommand{\CUDAHeatPlace}[3]{%
+  \CUDAHeatCanvas{\node[anchor=south west,inner sep=0pt] at (#1,#2) {#3};}}
+\newcommand{\CUDAHeatPanelLabel}[1]{%
+  \CUDAHeatCanvas{\CUDAHeatText{0.075}{0.671}{CUDAHeatMuted}{10}{\bfseries #1}}}
+% Convenience content box inside the white panel; top-left aligned.
+\newcommand{\CUDAHeatContent}[1]{%
+  \CUDAHeatCanvas{\node[anchor=north west,inner sep=0pt,text=CUDAHeatInk,
+    text width=0.80\paperwidth] at (0.10,0.65) {#1};}}
+\mode<all>

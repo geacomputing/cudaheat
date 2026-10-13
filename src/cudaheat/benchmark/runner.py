@@ -143,6 +143,7 @@ class CUDAHeatBenchmark:
             time_dim=self.engine.time_dim,
             point_indices=point_selection,
             calendar_mode=self.engine.calendar_mode,
+            timing_logging=self.engine.timing_logging,
         )
 
     @staticmethod

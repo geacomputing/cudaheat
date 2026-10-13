@@ -32,6 +32,33 @@ BLUE, TEAL, ORANGE, PURPLE = "#2475B6", "#087F8C", "#E36B45", "#7567A4"
 BORDER, LIGHT = "#DDE6ED", "#B3C2D0"
 IO_COLOR, H2D_COLOR, COMPUTE_COLOR, D2H_COLOR = ORANGE, PURPLE, BLUE, TEAL
 
+# Manual full-detection timings supplied for the 22,083-point SST workload.
+# They deliberately remain separate from the automated benchmark JSON because
+# this is a targeted one-point batch-width sweep around the storage-tile edge.
+MANUAL_STORAGE_ALIGNMENT_TIMINGS = (
+    (502, 34.970),
+    (503, 34.536),
+    (504, 34.541),
+    (505, 34.619),
+    (506, 34.492),
+    (507, 34.467),
+    (508, 34.490),
+    (509, 34.594),
+    (510, 34.649),
+    (511, 35.228),
+    (512, 20.192),
+    (513, 34.717),
+    (514, 34.216),
+    (515, 34.014),
+    (516, 34.167),
+    (517, 34.156),
+    (518, 34.185),
+    (519, 34.172),
+    (520, 34.178),
+    (521, 34.316),
+    (522, 34.132),
+)
+
 RESULTS_DIR: Path | None = None
 OUTPUT_DIR: Path | None = None
 MANIFEST: dict[str, Any] = {}
@@ -666,6 +693,97 @@ def plot_repeatability() -> None:
     save(fig, "benchmark_08_repeatability.png")
 
 
+def plot_storage_tile_alignment() -> None:
+    """Show the manually observed performance discontinuity at batch 512."""
+    batches = np.asarray([batch for batch, _ in MANUAL_STORAGE_ALIGNMENT_TIMINGS])
+    times = np.asarray([seconds for _, seconds in MANUAL_STORAGE_ALIGNMENT_TIMINGS])
+    fastest_index = int(np.argmin(times))
+    fastest_batch = int(batches[fastest_index])
+    fastest_time = float(times[fastest_index])
+    nearby_times = np.delete(times, fastest_index)
+    nearby_median = float(np.median(nearby_times))
+    speedup_percent = 100 * (nearby_median - fastest_time) / nearby_median
+
+    fig = frame(
+        "The 512-point storage-alignment sweet spot",
+        "Manual full-detection timing sweep over consecutive, discrete batch sizes",
+        11,
+    )
+    ax = axis(fig, bounds=(0.115, 0.270, 0.770, 0.345))
+    ax.plot(batches, times, color=LIGHT, lw=2.0, zorder=2)
+    ax.scatter(batches, times, s=42, color=BLUE, edgecolor=WHITE, linewidth=1.0, zorder=3)
+    ax.scatter(
+        [fastest_batch],
+        [fastest_time],
+        s=160,
+        color=TEAL,
+        edgecolor=WHITE,
+        linewidth=2.4,
+        zorder=5,
+        label="Fastest measured run",
+    )
+    ax.axvline(fastest_batch, color=TEAL, lw=1.4, ls=(0, (3, 3)), alpha=0.8, zorder=1)
+    ax.axhline(nearby_median, color=MUTED, lw=1.1, ls=(0, (4, 4)), alpha=0.8, zorder=1)
+    ax.set(
+        xlim=(batches[0] - 0.65, batches[-1] + 0.65),
+        ylim=(fastest_time * 0.82, max(times) * 1.08),
+        xticks=batches,
+        xlabel="Requested GPU batch size (spatial points; every value shown)",
+        ylabel="Complete detection time (s)",
+    )
+    ax.tick_params(axis="x", labelsize=7.5, pad=7)
+    for label, batch in zip(ax.get_xticklabels(), batches, strict=True):
+        if batch == fastest_batch:
+            label.set(color=TEAL, weight="bold")
+
+    ax.annotate(
+        "Exact storage-tile match\n512 points · 20.2 s",
+        xy=(fastest_batch, fastest_time),
+        xytext=(515.2, 24.2),
+        textcoords="data",
+        arrowprops={"arrowstyle": "-", "color": TEAL, "lw": 1.6},
+        bbox={"boxstyle": "round,pad=0.42", "fc": WHITE, "ec": TEAL, "lw": 1.1},
+        color=INK,
+        fontsize=10,
+        weight="bold",
+        va="center",
+    )
+    ax.text(
+        0.985,
+        0.955,
+        f"Median of surrounding runs: {nearby_median:.1f} s",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        color=MUTED,
+        fontsize=9.4,
+    )
+    ax.legend(loc="lower left", frameon=False, fontsize=9.2)
+    fig.text(
+        0.075,
+        0.671,
+        "MANUAL DISCRETE BATCH-SIZE SWEEP",
+        color=MUTED,
+        fontsize=10,
+        weight="bold",
+    )
+    fig.text(
+        0.922,
+        0.671,
+        f"{speedup_percent:.0f}% FASTER AT 512",
+        color=TEAL,
+        fontsize=10,
+        weight="bold",
+        ha="right",
+    )
+    caption(
+        fig,
+        "At 512 points, the GPU batch matches the NetCDF file's storage tile; adjacent sizes are much slower.",
+        "manual full-detection timing sweep, batch sizes 502–522",
+    )
+    save(fig, "benchmark_11_storage_tile_alignment.png")
+
+
 def _dashboard_metric(fig: plt.Figure, x: float, value: str, label: str) -> None:
     box = FancyBboxPatch(
         (x, 0.618),
@@ -826,6 +944,7 @@ PLOT_REGISTRY = {
     "numerical_consistency": plot_numerical_consistency,
     "repeatability": plot_repeatability,
     "cudaheat_dashboard": plot_cudaheat_dashboard,
+    "storage_tile_alignment": plot_storage_tile_alignment,
 }
 
 

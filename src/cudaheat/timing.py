@@ -8,9 +8,13 @@ from time import perf_counter
 from typing import Any
 
 
-def log_elapsed_time(label: str, started_at: float, /, **details: Any) -> float:
-    """Print a timing record and return its elapsed seconds."""
+def log_elapsed_time(
+    label: str, started_at: float, /, *, enabled: bool = True, **details: Any
+) -> float:
+    """Return elapsed seconds and, when enabled, print a timing record."""
     elapsed = perf_counter() - started_at
+    if not enabled:
+        return elapsed
     source = _caller_location()
     context = " ".join(f"{name}={value}" for name, value in details.items())
     suffix = f" | {context}" if context else ""

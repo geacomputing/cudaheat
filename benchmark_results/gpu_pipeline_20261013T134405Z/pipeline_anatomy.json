@@ -1,0 +1,70 @@
+{
+  "description": "Full-domain pipeline stage timings.",
+  "purpose": "Explain where full-pipeline seconds are spent.",
+  "methodology": "Mean of automatic-batch float32 scale-test records.",
+  "units": {
+    "*_seconds": "seconds",
+    "gpu_*_values_per_second": "values per second",
+    "*_vram_bytes": "bytes",
+    "safety_fraction": "fraction of runtime-free VRAM reserved",
+    "npoints": "spatial points",
+    "ntime": "hourly samples",
+    "percentile": "fraction"
+  },
+  "records": [
+    {
+      "npoints": 22083,
+      "component": "Host read",
+      "seconds": 20.587175871798898,
+      "pipeline_wall_seconds": 26.336183047400482
+    },
+    {
+      "npoints": 22083,
+      "component": "Host preparation",
+      "seconds": 7.744400863884949e-06,
+      "pipeline_wall_seconds": 26.336183047400482
+    },
+    {
+      "npoints": 22083,
+      "component": "GPU allocation",
+      "seconds": 0.013650205999874742,
+      "pipeline_wall_seconds": 26.336183047400482
+    },
+    {
+      "npoints": 22083,
+      "component": "GPU metadata transfer",
+      "seconds": 0.019459562197880587,
+      "pipeline_wall_seconds": 26.336183047400482
+    },
+    {
+      "npoints": 22083,
+      "component": "Host to GPU transfer",
+      "seconds": 0.45975304160056113,
+      "pipeline_wall_seconds": 26.336183047400482
+    },
+    {
+      "npoints": 22083,
+      "component": "GPU compute",
+      "seconds": 4.935677143859864,
+      "pipeline_wall_seconds": 26.336183047400482
+    },
+    {
+      "npoints": 22083,
+      "component": "GPU to host transfer",
+      "seconds": 0.01739025280003261,
+      "pipeline_wall_seconds": 26.336183047400482
+    },
+    {
+      "npoints": 22083,
+      "component": "Result assembly",
+      "seconds": 0.001042878199950792,
+      "pipeline_wall_seconds": 26.336183047400482
+    },
+    {
+      "npoints": 22083,
+      "component": "Unattributed pipeline overhead",
+      "seconds": 0.3020263465425579,
+      "pipeline_wall_seconds": 26.336183047400482
+    }
+  ]
+}
