@@ -1,0 +1,22 @@
+{
+  "mode": "eager",
+  "status": "complete",
+  "initialization_seconds": 15.390228021002258,
+  "source_open_seconds": 0.21042628199938918,
+  "materialization_seconds": 15.044307181997283,
+  "engine_initialization_seconds": 0.132482302000426,
+  "pipeline_wall_seconds": 6.3128292209985375,
+  "total_wall_seconds": 21.703057242000796,
+  "npoints": 22083,
+  "ntime": 68016,
+  "count_sha256": "7357f1b529ef9b4e7b7368ac5069ea8f619f1ae2fed28a497754c0ad3289361a",
+  "count_sum": 230795335,
+  "count_valid_points": 22083,
+  "count_missing_points": 0,
+  "peak_smaps_rss_gib": 6.651462554931641,
+  "peak_private_working_gib": 6.426601409912109,
+  "peak_private_mapped_gib": 6.497920989990234,
+  "peak_anonymous_gib": 6.426601409912109,
+  "peak_file_backed_rss_gib": 0.22486114501953125,
+  "peak_rss_gib": 6.650794982910156
+}

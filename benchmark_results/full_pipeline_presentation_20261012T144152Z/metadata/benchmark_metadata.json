@@ -1,0 +1,87 @@
+{
+  "benchmark_name": "CUDAHeat Full-Pipeline Presentation Benchmark",
+  "benchmark_id": "full_pipeline_presentation",
+  "campaign_started_utc": "2026-10-12T14:41:52.290856+00:00",
+  "cudaheat_version": "0.1.0",
+  "dataset_path": "/home/user/Documents/Gea/cudaheat/examples/sst_cudaheat.nc",
+  "dataset_file_bytes": 2510199948,
+  "variable": "analysed_sst",
+  "ntime": 68016,
+  "dataset_npoints": 22083,
+  "campaign_npoints": 22083,
+  "spatial_dimensions": [
+    "point"
+  ],
+  "time_dimension": "time",
+  "baseline": [
+    2019,
+    2025
+  ],
+  "percentile": 0.9,
+  "smooth_window_hours": 120,
+  "lazy_input": true,
+  "lazy_spatial_chunk": 256,
+  "dask_chunk_sensitivity_sizes": [
+    64,
+    256,
+    1024
+  ],
+  "dask_chunk_sensitivity_repeats": 2,
+  "automatic_batch_size": 1962,
+  "vram_safety": 0.15,
+  "vram_safety_sweep": {
+    "enabled": true,
+    "values": [
+      0.0,
+      0.15,
+      0.3,
+      0.45
+    ]
+  },
+  "vram_policy": {
+    "configured_total_vram_gib": 7.99609375,
+    "configured_reserved_vram_gib": 1.1994140625,
+    "configured_safety_limited_vram_gib": 6.7966796875,
+    "runtime_total_vram_gib": 7.6143798828125,
+    "runtime_free_vram_gib": 5.9295654296875,
+    "runtime_free_safety_limited_vram_gib": 5.040130615234375,
+    "batch_budget_basis": "runtime free VRAM \u00d7 (1 - vram_safety)"
+  },
+  "point_schedule": [
+    32,
+    128,
+    512,
+    2000,
+    8000,
+    22083
+  ],
+  "batch_schedule": [
+    64,
+    256,
+    512,
+    1024,
+    1962
+  ],
+  "repeats": 3,
+  "python_version": "3.14.1 | packaged by Anaconda, Inc. | (main, Dec  3 2025, 21:29:33) [GCC 14.3.0]",
+  "platform": "Linux-7.0.0-29-generic-x86_64-with-glibc2.39",
+  "numpy_version": "2.3.5",
+  "xarray_version": "2025.12.0",
+  "dask_version": "2026.8.0",
+  "cupy_version": "14.2.0",
+  "cuda_runtime_version": 13020,
+  "cuda_driver_version": 13000,
+  "gpu": {
+    "device_id": 0,
+    "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+    "total_bytes": 8175878144,
+    "free_bytes": 6366822400,
+    "used_bytes": 1809055744,
+    "compute_capability": [
+      8,
+      9
+    ]
+  },
+  "scope": "Numerical pipeline only; MHW taxonomy and classification are excluded.",
+  "time_was_split": false
+}

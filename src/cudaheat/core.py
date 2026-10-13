@@ -13,15 +13,18 @@ import numpy as np
 import xarray as xr
 
 from .climatology import (
+    CALENDAR_MODE_DAY_OF_YEAR,
+    CALENDAR_MODE_MONTH_DAY_HOUR,
     HOURS_PER_LEAP_YEAR,
     PreEventFields,
     baseline_rows,
+    climatology_bin_count,
     gpu_pre_event_fields,
     hourly_climatology_index,
 )
 from .detection import EventRuns, detect_events
 from .exceptions import InsufficientVRAMError
-from .io import NetCDFReader
+from .io import NetCDFReader, is_optimized_point_layout
 from .memory import (
     BatchEstimate,
     BatchTelemetry,
@@ -31,8 +34,12 @@ from .memory import (
     reduced_batch_size,
     release_gpu_memory,
 )
+from .result import EventDetectionResult, EventGrid
+from .timing import log_elapsed_time
 
 logger = logging.getLogger(__name__)
+_CUDAHEAT_SMOOTH_WINDOW_HOURS = 120
+_HOURWAVE_SMOOTH_WINDOW_HOURS = 15 * 24
 
 
 @dataclass
@@ -69,20 +76,6 @@ class EventBatchOutput:
     telemetry: BatchTelemetry
 
 
-@dataclass
-class EventDetectionResult:
-    """Minimal detected-event table, telemetry, and reproducibility metadata."""
-
-    data: xr.Dataset
-    telemetry: tuple[BatchTelemetry, ...]
-    metadata: dict[str, Any]
-
-    @property
-    def event_count(self) -> xr.DataArray:
-        """Number of retained events per spatial point."""
-        return self.data["event_count"]
-
-
 class CUDAHeat:
     """GPU-native preprocessing for hourly gridded SST.
 
@@ -100,7 +93,7 @@ class CUDAHeat:
         Explicit GPU precision, either ``"float32"`` (default) or
         ``"float64"``. Source precision is never silently retained instead.
     vram_safety:
-        Fraction of currently free VRAM held in reserve (default 0.30).
+        Fraction of currently free VRAM held in reserve (default 0.15).
     devices:
         Selected CUDA device IDs. The first milestone runs batches sequentially
         on the first selected device; the executor is device-explicit so future
@@ -111,6 +104,11 @@ class CUDAHeat:
     lazy_spatial_chunk:
         Maximum source chunk width along the final spatial dimension for lazy
         reads. It affects disk-to-CPU I/O only, not CUDAHeat's GPU batch size.
+    calendar_mode:
+        ``"month_day_hour"`` (default) preserves CUDAHeat's historic fixed
+        366-day month/day/hour bins. ``"dayofyear"`` reproduces HourWave's
+        day-of-year hourly grouping and, when smoothing options are omitted,
+        its 360-hour window with a 24-hour minimum period.
     """
 
     _RETURNABLE_FIELDS = frozenset(
@@ -138,6 +136,7 @@ class CUDAHeat:
         point_indices: Iterable[int] | slice | None = None,
         lazy: bool = False,
         lazy_spatial_chunk: int = 256,
+        calendar_mode: str = CALENDAR_MODE_MONTH_DAY_HOUR,
     ) -> None:
         self.dtype = np.dtype(dtype)
         if self.dtype not in (np.dtype("float32"), np.dtype("float64")):
@@ -150,6 +149,8 @@ class CUDAHeat:
             raise ValueError("devices must not contain duplicates")
         self.device_id = self.devices[0]
         self.lazy = bool(lazy)
+        self.lazy_spatial_chunk = int(lazy_spatial_chunk)
+        self.calendar_mode = str(calendar_mode)
         self.source_path = str(source) if not isinstance(source, xr.Dataset) else None
         self._owns_dataset = not isinstance(source, xr.Dataset)
         self._reader: NetCDFReader | None = None
@@ -159,7 +160,7 @@ class CUDAHeat:
                 variable=variable,
                 lazy=self.lazy,
                 time_dim=time_dim,
-                spatial_chunk=lazy_spatial_chunk,
+                spatial_chunk=self.lazy_spatial_chunk,
             )
             self._dataset = self._reader.dataset
         else:
@@ -176,11 +177,18 @@ class CUDAHeat:
         if not self.spatial_dims:
             self.close()
             raise ValueError("SST variable needs at least one spatial dimension besides time")
-        self._stacked = (
-            self._source.transpose(self.time_dim, *self.spatial_dims)
-            .stack(point=self.spatial_dims)
-            .transpose(self.time_dim, "point")
-        )
+        self._optimized_point_layout = is_optimized_point_layout(self._source, self.time_dim)
+        if self._optimized_point_layout:
+            # The one-time preprocessor already performed spatial stacking and
+            # permanent-land removal.  Keeping this direct prevents a second
+            # stack operation and preserves compact point-index semantics.
+            self._stacked = self._source.transpose(self.time_dim, "point")
+        else:
+            self._stacked = (
+                self._source.transpose(self.time_dim, *self.spatial_dims)
+                .stack(point=self.spatial_dims)
+                .transpose(self.time_dim, "point")
+            )
         if self._reader is not None:
             self._stacked = self._reader.rechunk_stacked(self._stacked)
         all_point_count = int(self._stacked.sizes["point"])
@@ -191,13 +199,26 @@ class CUDAHeat:
             # and can make a small spatial subset depend on every source chunk.
             selection = point_indices if isinstance(point_indices, slice) else self.point_indices
             self._stacked = self._stacked.isel(point=selection)
+        self._point_coordinates = (
+            {
+                name: np.array(coordinate.values, copy=True)
+                for name, coordinate in self._stacked.coords.items()
+                if name != "point" and coordinate.dims == ("point",)
+            }
+            if self._optimized_point_layout
+            else {}
+        )
+        original_flat = self._point_coordinates.get("original_flat_index")
+        self._original_flat_index = (
+            np.asarray(original_flat, dtype=np.int64) if original_flat is not None else None
+        )
         self.ntime = int(self._stacked.sizes[self.time_dim])
         self.npoints = int(self._stacked.sizes["point"])
         if self.ntime < 1 or self.npoints < 1:
             self.close()
             raise ValueError("SST variable must have non-empty time and spatial dimensions")
         self._time = self._stacked[self.time_dim]
-        self._bins = hourly_climatology_index(self._time)
+        self._bins = hourly_climatology_index(self._time, calendar_mode=self.calendar_mode)
         self._estimator = VRAMEstimator(
             self.ntime, self.dtype.itemsize, safety_fraction=self.vram_safety
         )
@@ -315,6 +336,13 @@ class CUDAHeat:
             finally:
                 del selected
         host_read_seconds = perf_counter() - read_start
+        log_elapsed_time(
+            "disk-to-CPU batch I/O",
+            read_start,
+            points=f"{point_start}:{point_stop}",
+            time_steps=self.ntime,
+            host_bytes=values.nbytes,
+        )
         prepare_start = perf_counter()
         if values.shape != (self.ntime, point_stop - point_start):
             raise RuntimeError("spatial batch lost part of its time series")
@@ -325,7 +353,8 @@ class CUDAHeat:
         *,
         baseline: tuple[int, int] | None = None,
         percentile: float = 0.90,
-        smooth_window_hours: int = 120,
+        smooth_window_hours: int | None = None,
+        smooth_min_periods: int | None = None,
         return_fields: Iterable[str] = (),
         on_batch: Callable[[BatchOutput], None] | None = None,
         batch_size: int | None = None,
@@ -341,8 +370,13 @@ class CUDAHeat:
         unknown = requested - self._RETURNABLE_FIELDS
         if unknown:
             raise ValueError(f"unknown return field(s): {sorted(unknown)!r}")
+        smooth_window_hours = self._resolve_smooth_window_hours(smooth_window_hours)
         rows = baseline_rows(self._time, baseline)
-        buffers = self._allocate_output_buffers(requested)
+        climatology_nbins = self._climatology_nbins(rows)
+        resolved_smooth_min_periods = self._resolve_smooth_min_periods(
+            smooth_window_hours, smooth_min_periods
+        )
+        buffers = self._allocate_output_buffers(requested, climatology_nbins)
         exceedance_count = np.zeros(self.npoints, dtype=np.uint64)
         telemetry: list[BatchTelemetry] = []
         point_start = 0
@@ -373,6 +407,8 @@ class CUDAHeat:
                         rows,
                         percentile,
                         smooth_window_hours,
+                        resolved_smooth_min_periods,
+                        climatology_nbins,
                         retries,
                         host_read_seconds,
                         host_prepare_seconds,
@@ -423,7 +459,7 @@ class CUDAHeat:
 
         self.batch_size = active_batch_size
         final_assembly_start = perf_counter()
-        data = self._to_dataset(exceedance_count, buffers)
+        data = self._to_dataset(exceedance_count, buffers, climatology_nbins)
         final_assembly_seconds = perf_counter() - final_assembly_start
         result = PipelineResult(
             data=data,
@@ -435,8 +471,11 @@ class CUDAHeat:
                 "baseline": baseline,
                 "percentile": percentile,
                 "smooth_window_hours": smooth_window_hours,
+                "smooth_min_periods": resolved_smooth_min_periods,
+                "calendar_mode": self.calendar_mode,
                 "time_dimension": self.time_dim,
                 "spatial_dimensions": self.spatial_dims,
+                "optimized_point_layout": self._optimized_point_layout,
                 "time_was_split": False,
                 "vram_safety": self.vram_safety,
                 "initial_batch_estimate": self.batch_estimate.as_dict(),
@@ -480,7 +519,8 @@ class CUDAHeat:
         *,
         baseline: tuple[int, int] | None = None,
         percentile: float = 0.90,
-        smooth_window_hours: int = 120,
+        smooth_window_hours: int | None = None,
+        smooth_min_periods: int | None = None,
         min_duration_hours: int = 1,
         max_internal_gap_hours: int = 0,
         join_gap_hours: int = 0,
@@ -490,7 +530,9 @@ class CUDAHeat:
 
         The pipeline preserves raw exceedance, fills short internal gaps,
         filters contiguous runs by duration, then joins nearby candidates.
-        Dense labels and event metrics remain separate optional stages.
+        Only the compact event catalogue is retained on the host.  Use the
+        result's CPU-only ``to_xarray()`` method to create a chunked dense
+        event-ID cube when that representation is needed.
         """
         if not isinstance(min_duration_hours, int) or isinstance(min_duration_hours, bool):
             raise TypeError("min_duration_hours must be an integer")
@@ -507,7 +549,12 @@ class CUDAHeat:
         if batch_size is not None and batch_size < 1:
             raise ValueError("batch_size must be positive")
 
+        smooth_window_hours = self._resolve_smooth_window_hours(smooth_window_hours)
         rows = baseline_rows(self._time, baseline)
+        climatology_nbins = self._climatology_nbins(rows)
+        resolved_smooth_min_periods = self._resolve_smooth_min_periods(
+            smooth_window_hours, smooth_min_periods
+        )
         event_parts: list[EventRuns] = []
         telemetry: list[BatchTelemetry] = []
         point_start = 0
@@ -529,6 +576,8 @@ class CUDAHeat:
                         rows,
                         percentile,
                         smooth_window_hours,
+                        resolved_smooth_min_periods,
+                        climatology_nbins,
                         min_duration_hours,
                         max_internal_gap_hours,
                         join_gap_hours,
@@ -554,7 +603,6 @@ class CUDAHeat:
                         retries,
                     )
                     continue
-                del cpu_values
                 assembly_start = perf_counter()
                 event_parts.append(
                     EventRuns(
@@ -564,27 +612,42 @@ class CUDAHeat:
                         duration=np.asarray(output.events.duration, dtype=np.intp),
                     )
                 )
+                del cpu_values
                 telemetry.append(
                     replace(
                         batch_telemetry,
                         result_assembly_seconds=perf_counter() - assembly_start,
                     )
                 )
+                del output
                 point_start = point_stop
                 break
 
         self.batch_size = active_batch_size
         final_assembly_start = perf_counter()
         data = self._event_dataset(event_parts)
+        grid = EventGrid(
+            time=np.array(self._time.values, copy=True),
+            point_index=self._stacked.indexes["point"].copy(),
+            point_indices=self.point_indices.copy(),
+            time_dim=self.time_dim,
+            point_coordinates=self._point_coordinates.copy(),
+        )
         result = EventDetectionResult(
             data=data,
             telemetry=tuple(telemetry),
             metadata={
                 "variable": self.variable,
+                "source_path": self.source_path,
                 "dtype": self.dtype.name,
+                "time_dimension": self.time_dim,
+                "spatial_dimensions": self.spatial_dims,
+                "optimized_point_layout": self._optimized_point_layout,
                 "baseline": baseline,
                 "percentile": percentile,
                 "smooth_window_hours": smooth_window_hours,
+                "smooth_min_periods": resolved_smooth_min_periods,
+                "calendar_mode": self.calendar_mode,
                 "min_duration_hours": min_duration_hours,
                 "max_internal_gap_hours": max_internal_gap_hours,
                 "join_gap_hours": join_gap_hours,
@@ -598,6 +661,7 @@ class CUDAHeat:
                 ),
                 "result_dataset_assembly_seconds": perf_counter() - final_assembly_start,
             },
+            _grid=grid,
         )
         self.last_detection_result = result
         return result
@@ -610,6 +674,8 @@ class CUDAHeat:
         rows: np.ndarray,
         percentile: float,
         smooth_window_hours: int,
+        smooth_min_periods: int,
+        climatology_nbins: int,
         retries: int,
         host_read_seconds: float,
         host_prepare_seconds: float,
@@ -624,7 +690,14 @@ class CUDAHeat:
             transfer_start = perf_counter()
             gpu_values.set(cpu_values)
             cp.cuda.get_current_stream().synchronize()
-            transfer_to_device = perf_counter() - transfer_start
+            transfer_to_device = log_elapsed_time(
+                "CPU-to-GPU batch transfer",
+                transfer_start,
+                points=f"{point_start}:{point_stop}",
+                time_steps=cpu_values.shape[0],
+                host_bytes=cpu_values.nbytes,
+                device_id=self.device_id,
+            )
             metadata_start = perf_counter()
             gpu_bins = cp.asarray(self._bins)
             gpu_rows = cp.asarray(rows)
@@ -639,7 +712,9 @@ class CUDAHeat:
                 gpu_rows,
                 percentile=percentile,
                 smooth_window_hours=smooth_window_hours,
-                nbins=HOURS_PER_LEAP_YEAR,
+                smooth_min_periods=smooth_min_periods,
+                nbins=climatology_nbins,
+                calendar_mode=self.calendar_mode,
             )
             event_end.record()
             event_end.synchronize()
@@ -690,6 +765,8 @@ class CUDAHeat:
         rows: np.ndarray,
         percentile: float,
         smooth_window_hours: int,
+        smooth_min_periods: int,
+        climatology_nbins: int,
         min_duration_hours: int,
         max_internal_gap_hours: int,
         join_gap_hours: int,
@@ -708,7 +785,14 @@ class CUDAHeat:
             transfer_start = perf_counter()
             gpu_values.set(cpu_values)
             cp.cuda.get_current_stream().synchronize()
-            transfer_to_device = perf_counter() - transfer_start
+            transfer_to_device = log_elapsed_time(
+                "CPU-to-GPU batch transfer",
+                transfer_start,
+                points=f"{point_start}:{point_stop}",
+                time_steps=cpu_values.shape[0],
+                host_bytes=cpu_values.nbytes,
+                device_id=self.device_id,
+            )
             metadata_start = perf_counter()
             gpu_bins = cp.asarray(self._bins)
             gpu_rows = cp.asarray(rows)
@@ -723,7 +807,9 @@ class CUDAHeat:
                 gpu_rows,
                 percentile=percentile,
                 smooth_window_hours=smooth_window_hours,
-                nbins=HOURS_PER_LEAP_YEAR,
+                smooth_min_periods=smooth_min_periods,
+                nbins=climatology_nbins,
+                calendar_mode=self.calendar_mode,
             )
             detected = detect_events(
                 gpu_values,
@@ -790,13 +876,15 @@ class CUDAHeat:
         cp = cupy()
         return {name: cp.asnumpy(mapping[name]) for name in requested}
 
-    def _allocate_output_buffers(self, requested: frozenset[str]) -> dict[str, np.ndarray]:
+    def _allocate_output_buffers(
+        self, requested: frozenset[str], climatology_nbins: int
+    ) -> dict[str, np.ndarray]:
         self._active_return_fields = requested
         specs: dict[str, tuple[tuple[int, int], np.dtype[Any]]] = {
-            "climatology_raw": ((HOURS_PER_LEAP_YEAR, self.npoints), self.dtype),
-            "climatology": ((HOURS_PER_LEAP_YEAR, self.npoints), self.dtype),
-            "threshold_raw": ((HOURS_PER_LEAP_YEAR, self.npoints), self.dtype),
-            "threshold_cycle": ((HOURS_PER_LEAP_YEAR, self.npoints), self.dtype),
+            "climatology_raw": ((climatology_nbins, self.npoints), self.dtype),
+            "climatology": ((climatology_nbins, self.npoints), self.dtype),
+            "threshold_raw": ((climatology_nbins, self.npoints), self.dtype),
+            "threshold_cycle": ((climatology_nbins, self.npoints), self.dtype),
             "threshold": ((self.ntime, self.npoints), self.dtype),
             "anomaly": ((self.ntime, self.npoints), self.dtype),
             "excess": ((self.ntime, self.npoints), self.dtype),
@@ -812,7 +900,9 @@ class CUDAHeat:
             if name != "exceedance_count":
                 buffers[name][..., start:stop] = values
 
-    def _to_dataset(self, exceedance_count: np.ndarray, buffers: dict[str, np.ndarray]) -> xr.Dataset:
+    def _to_dataset(
+        self, exceedance_count: np.ndarray, buffers: dict[str, np.ndarray], climatology_nbins: int
+    ) -> xr.Dataset:
         data = {"exceedance_count": self._to_dataarray(exceedance_count, "exceedance_count")}
         for name, values in buffers.items():
             leading_dim = (
@@ -820,7 +910,7 @@ class CUDAHeat:
                 if name in {"climatology_raw", "climatology", "threshold_raw", "threshold_cycle"}
                 else self.time_dim
             )
-            data[name] = self._to_dataarray(values, name, leading_dim)
+            data[name] = self._to_dataarray(values, name, leading_dim, climatology_nbins)
         return xr.Dataset(data)
 
     def _event_dataset(self, event_parts: list[EventRuns]) -> xr.Dataset:
@@ -842,13 +932,29 @@ class CUDAHeat:
             },
             coords={"event": event_ids},
         )
+        if self._original_flat_index is not None:
+            data["original_flat_index"] = ("event", self._original_flat_index[point])
+            data["point_index"].attrs["description"] = "CUDAHeat compact point index."
+            data["original_flat_index"].attrs["description"] = (
+                "C-order flattened point index in the source latitude x longitude grid."
+            )
         event_count = np.bincount(point, minlength=self.npoints).astype(np.uint64, copy=False)
-        data["event_count"] = self._to_dataarray(event_count, "event_count")
+        # ``original_flat_index`` is event-level provenance above.  It cannot
+        # also be a point-level coordinate in this same Dataset under Xarray's
+        # coordinate/data-variable naming rules.
+        data["event_count"] = self._to_dataarray(
+            event_count, "event_count", exclude_point_coordinates={"original_flat_index"}
+        )
         data["stop_index"].attrs["description"] = "Exclusive time index; event interval is [start, stop)."
         return data
 
     def _to_dataarray(
-        self, values: np.ndarray, name: str, leading_dim: str | None = None
+        self,
+        values: np.ndarray,
+        name: str,
+        leading_dim: str | None = None,
+        climatology_nbins: int = HOURS_PER_LEAP_YEAR,
+        exclude_point_coordinates: set[str] | None = None,
     ) -> xr.DataArray:
         if leading_dim is None:
             array = xr.DataArray(values, dims=("point",), coords={"point": self._stacked["point"]}, name=name)
@@ -863,10 +969,44 @@ class CUDAHeat:
             array = xr.DataArray(
                 values,
                 dims=(leading_dim, "point"),
-                coords={leading_dim: np.arange(HOURS_PER_LEAP_YEAR), "point": self._stacked["point"]},
+                coords={leading_dim: np.arange(climatology_nbins), "point": self._stacked["point"]},
                 name=name,
             )
-        return array.unstack("point")
+        if not self._optimized_point_layout:
+            return array.unstack("point")
+        excluded = exclude_point_coordinates or set()
+        return array.assign_coords(
+            {
+                name: ("point", values)
+                for name, values in self._point_coordinates.items()
+                if name not in array.coords and name not in excluded
+            }
+        )
+
+    def _climatology_nbins(self, rows: np.ndarray) -> int:
+        return climatology_bin_count(self._bins, rows, calendar_mode=self.calendar_mode)
+
+    def _resolve_smooth_min_periods(self, window: int, requested: int | None) -> int:
+        if requested is None:
+            # HourWave defaults to min(24, window); retain CUDAHeat's historic
+            # one-valid-bin behavior for the default month/day/hour calendar.
+            requested = min(24, window) if self.calendar_mode == CALENDAR_MODE_DAY_OF_YEAR else 1
+        if not isinstance(requested, int) or isinstance(requested, bool):
+            raise TypeError("smooth_min_periods must be an integer or None")
+        if not 1 <= requested <= window:
+            raise ValueError("smooth_min_periods must be between 1 and smooth_window_hours")
+        return requested
+
+    def _resolve_smooth_window_hours(self, requested: int | None) -> int:
+        if requested is None:
+            return (
+                _HOURWAVE_SMOOTH_WINDOW_HOURS
+                if self.calendar_mode == CALENDAR_MODE_DAY_OF_YEAR
+                else _CUDAHEAT_SMOOTH_WINDOW_HOURS
+            )
+        if not isinstance(requested, int) or isinstance(requested, bool):
+            raise TypeError("smooth_window_hours must be an integer or None")
+        return requested
 
     @staticmethod
     def _is_gpu_oom(exc: Exception) -> bool:

@@ -28,9 +28,8 @@ The climatological cycle has 366 × 24 month/day/hour bins. Smoothing is circula
 pip install -e '.[gpu,benchmark,test]'
 ```
 
-For bounded-RAM Dask-backed NetCDF reads, install `.[lazy]` and pass
-`lazy=True` to `CUDAHeat`. CUDAHeat still transfers complete time series and
-uses spatial batches only.
+For bounded-RAM Dask-backed NetCDF reads, pass `lazy=True` to `CUDAHeat`.
+CUDAHeat still transfers complete time series and uses spatial batches only.
 
 Install the CuPy extra matching the installed CUDA driver. Base-package imports work without CuPy, but `CUDAHeat` requires an NVIDIA CUDA device.
 
@@ -49,6 +48,34 @@ with CUDAHeat("sst.nc", variable="analysed_sst", dtype="float32", vram_safety=0.
 ```
 
 `run()` returns compact per-point exceedance counts by default. For production-size outputs, request fields with `return_fields` and use `on_batch` to persist every spatial batch without retaining all `(time, point)` values in CPU RAM.
+
+`detect()` retains only a compact sparse event catalogue. `to_xarray()` and
+`to_dense()` reconstruct a Dask-backed, chunked `event_id` cube from that
+catalogue; they do not retain or allocate dense SST, threshold, or anomaly
+fields. Zero means no event and positive values are catalogue IDs.
+
+```python
+dense = result.to_xarray(time_chunk_hours=168)
+point = dense.isel(latitude=33, longitude=30).compute()
+```
+
+Do not call `.load()` or `.values` on the complete `dense` Dataset; that
+deliberately materializes a full dense cube. Use the CPU-only
+`result.select_events(...)` method for catalogue filtering, or write the
+Dask-backed cube to a chunked store such as Zarr.
+
+For an SST/threshold plot, reconstruct only the required point or event. This
+reads one full time series and performs no CUDA work:
+
+```python
+event = result.event_timeseries(event_id=42, pad_hours=48)
+event[["sst", "climatology", "threshold"]].to_array().plot.line(x="time")
+```
+
+`result.point_timeseries(latitude=33, longitude=30)` returns the full history
+for one positional grid point; its keyword arguments follow `isel` indexing.
+Use `result.point_events(latitude=33, longitude=30)` to get its event IDs from
+the sparse catalogue without creating a dense cube.
 
 ## Validation and benchmarks
 

@@ -10,6 +10,9 @@ import numpy as np
 
 HOURS_PER_LEAP_YEAR = 366 * 24
 _MONTH_OFFSETS = np.array([0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335])
+CALENDAR_MODE_MONTH_DAY_HOUR = "month_day_hour"
+CALENDAR_MODE_DAY_OF_YEAR = "dayofyear"
+_CALENDAR_MODES = frozenset((CALENDAR_MODE_MONTH_DAY_HOUR, CALENDAR_MODE_DAY_OF_YEAR))
 
 
 @dataclass
@@ -26,16 +29,24 @@ class PreEventFields:
     exceedance: Any
 
 
-def hourly_climatology_index(time: Any) -> np.ndarray:
-    """Map timestamps to a leap-year ``month/day/hour`` climatology index.
+def hourly_climatology_index(
+    time: Any, *, calendar_mode: str = CALENDAR_MODE_MONTH_DAY_HOUR
+) -> np.ndarray:
+    """Map hourly timestamps to a climatology index.
 
-    A fixed 366-day cycle preserves month/day/hour alignment across leap and
-    non-leap years.  The input must be hourly; the returned index is CPU-side
+    ``"month_day_hour"`` is the historic CUDAHeat default: a fixed 366-day
+    month/day/hour cycle, so a date has the same bin in leap and non-leap
+    years. ``"dayofyear"`` reproduces HourWave's grouping convention,
+    ``(time.dt.dayofyear - 1) * 24 + time.dt.hour``. In the latter convention,
+    dates after February shift by one day between leap and non-leap years.
+
+    The input must be aligned to whole hours. The returned index is CPU-side
     metadata and is tiny relative to SST batches.
     """
     try:
         month = np.asarray(time.dt.month.values, dtype=np.int16)
         day = np.asarray(time.dt.day.values, dtype=np.int16)
+        dayofyear = np.asarray(time.dt.dayofyear.values, dtype=np.int16)
         hour = np.asarray(time.dt.hour.values, dtype=np.int16)
         minute = np.asarray(time.dt.minute.values, dtype=np.int16)
         second = np.asarray(time.dt.second.values, dtype=np.int16)
@@ -43,7 +54,37 @@ def hourly_climatology_index(time: Any) -> np.ndarray:
         raise ValueError("time coordinate must provide datetime-like .dt accessors") from exc
     if np.any(minute != 0) or np.any(second != 0):
         raise ValueError("CUDAHeat currently requires timestamps aligned to whole hours")
-    return ((_MONTH_OFFSETS[month - 1] + day - 1) * 24 + hour).astype(np.int32)
+    if calendar_mode == CALENDAR_MODE_MONTH_DAY_HOUR:
+        return ((_MONTH_OFFSETS[month - 1] + day - 1) * 24 + hour).astype(np.int32)
+    if calendar_mode == CALENDAR_MODE_DAY_OF_YEAR:
+        return ((dayofyear - 1) * 24 + hour).astype(np.int32)
+    raise ValueError(
+        f"calendar_mode must be one of {sorted(_CALENDAR_MODES)!r}; got {calendar_mode!r}"
+    )
+
+
+def climatology_bin_count(
+    bins: np.ndarray,
+    baseline_indices: np.ndarray,
+    *,
+    calendar_mode: str = CALENDAR_MODE_MONTH_DAY_HOUR,
+) -> int:
+    """Return the cycle length required by one baseline and calendar mode.
+
+    The fixed month/day/hour convention always exposes all 366 days. HourWave
+    groups by observed day-of-year labels, so a non-leap baseline has 365 × 24
+    groups while a baseline containing a leap year has 366 × 24 groups.
+    """
+    if calendar_mode == CALENDAR_MODE_MONTH_DAY_HOUR:
+        return HOURS_PER_LEAP_YEAR
+    if calendar_mode != CALENDAR_MODE_DAY_OF_YEAR:
+        raise ValueError(
+            f"calendar_mode must be one of {sorted(_CALENDAR_MODES)!r}; got {calendar_mode!r}"
+        )
+    reference_bins = np.asarray(bins)[np.asarray(baseline_indices)]
+    if reference_bins.size == 0:
+        raise ValueError("baseline_indices must be non-empty")
+    return int(np.max(reference_bins)) + 1
 
 
 def baseline_rows(time: Any, baseline: tuple[int, int] | None) -> np.ndarray:
@@ -60,29 +101,66 @@ def baseline_rows(time: Any, baseline: tuple[int, int] | None) -> np.ndarray:
     return rows.astype(np.intp)
 
 
-def _smooth_circular(array: Any, window: int, xp: Any) -> Any:
+def _smooth_circular(array: Any, window: int, xp: Any, min_periods: int = 1) -> Any:
     """Nan-aware centered circular moving mean along climatological time."""
     if window <= 1:
         return array
     if window > array.shape[0]:
         raise ValueError("smooth_window_hours may not exceed the climatological cycle")
+    if not 1 <= min_periods <= window:
+        raise ValueError("smooth_min_periods must be between 1 and smooth_window_hours")
     left = window // 2
     right = window - left - 1
     padded = xp.concatenate((array[-left:] if left else array[:0], array, array[:right]), axis=0)
     valid = ~xp.isnan(padded)
     filled = xp.where(valid, padded, 0)
-    zeros = xp.zeros((1, array.shape[1]), dtype=array.dtype)
-    sums = xp.concatenate((zeros, xp.cumsum(filled, axis=0)), axis=0)
-    counts = xp.concatenate((zeros, xp.cumsum(valid, axis=0, dtype=array.dtype)), axis=0)
+    # A float32 prefix sum over a 366-day cycle loses enough precision that
+    # subtracting nearby large totals can shift a short rolling mean by mK.
+    # xarray's rolling reduction avoids that cancellation; accumulate in
+    # float64, then restore the requested output precision.
+    accumulation_dtype = xp.float64 if array.dtype.itemsize < 8 else array.dtype
+    zeros = xp.zeros((1, array.shape[1]), dtype=accumulation_dtype)
+    sums = xp.concatenate((zeros, xp.cumsum(filled, axis=0, dtype=accumulation_dtype)), axis=0)
+    counts = xp.concatenate((zeros, xp.cumsum(valid, axis=0, dtype=accumulation_dtype)), axis=0)
     numerator = sums[window:] - sums[:-window]
     denominator = counts[window:] - counts[:-window]
     safe_denominator = xp.where(denominator > 0, denominator, 1)
-    return xp.where(denominator > 0, numerator / safe_denominator, xp.nan)
+    output = xp.where(denominator >= min_periods, numerator / safe_denominator, xp.nan)
+    return output.astype(array.dtype, copy=False)
 
 
-def smooth_circular_cpu(array: np.ndarray, window: int) -> np.ndarray:
+def _smooth_hourwave_cycle(
+    array: Any, reference_bins: Any, window: int, xp: Any, min_periods: int
+) -> Any:
+    """Smooth populated day-of-year groups exactly as HourWave's groupby does.
+
+    Xarray's ``groupby`` omits timestamp groups absent from the baseline, then
+    rolls over the remaining ordered labels.  Keep that source behavior while
+    returning CUDAHeat's dense cycle representation: absent labels stay NaN.
+    """
+    populated_bins = xp.unique(reference_bins)
+    compact = _smooth_circular(array[populated_bins], window, xp, min_periods)
+    output = xp.full(array.shape, xp.nan, dtype=array.dtype)
+    output[populated_bins] = compact
+    return output
+
+
+def _smooth_cycle(
+    array: Any,
+    reference_bins: Any,
+    window: int,
+    xp: Any,
+    min_periods: int,
+    calendar_mode: str,
+) -> Any:
+    if calendar_mode == CALENDAR_MODE_DAY_OF_YEAR:
+        return _smooth_hourwave_cycle(array, reference_bins, window, xp, min_periods)
+    return _smooth_circular(array, window, xp, min_periods)
+
+
+def smooth_circular_cpu(array: np.ndarray, window: int, min_periods: int = 1) -> np.ndarray:
     """CPU reference for circular climatology smoothing."""
-    return _smooth_circular(array, window, np)
+    return _smooth_circular(array, window, np, min_periods)
 
 
 def _nanmean_by_bin_cpu(values: np.ndarray, bins: np.ndarray, nbins: int) -> np.ndarray:
@@ -121,6 +199,19 @@ def _nanpercentile_cpu(values: np.ndarray, percentile: float) -> np.ndarray:
     return np.where(counts > 0, output, np.nan)
 
 
+def _cycle_by_time(cycle: Any, bins: Any, xp: Any) -> Any:
+    """Align a climatology cycle to time without indexing missing baseline bins.
+
+    A day-of-year baseline without a leap year has no day-366 group. Returning
+    NaN for that target group mirrors an xarray ``reindex`` instead of raising
+    from direct label selection.
+    """
+    valid = (bins >= 0) & (bins < cycle.shape[0])
+    safe_bins = xp.clip(bins, 0, cycle.shape[0] - 1)
+    aligned = cycle[safe_bins]
+    return xp.where(valid[:, None], aligned, xp.nan)
+
+
 def cpu_pre_event_fields(
     values: np.ndarray,
     bins: np.ndarray,
@@ -128,17 +219,36 @@ def cpu_pre_event_fields(
     percentile: float = 0.90,
     smooth_window_hours: int = 120,
     nbins: int = HOURS_PER_LEAP_YEAR,
+    smooth_min_periods: int = 1,
+    calendar_mode: str = CALENDAR_MODE_MONTH_DAY_HOUR,
 ) -> PreEventFields:
     """NumPy reference implementation for validation and small CPU workloads."""
-    _validate_inputs(values, bins, baseline_indices, percentile, smooth_window_hours, nbins)
+    _validate_inputs(
+        values, bins, baseline_indices, percentile, smooth_window_hours, smooth_min_periods, nbins
+    )
+    _validate_calendar_mode(calendar_mode)
     reference = values[baseline_indices]
     reference_bins = bins[baseline_indices]
     climatology_raw = _nanmean_by_bin_cpu(reference, reference_bins, nbins)
-    climatology = smooth_circular_cpu(climatology_raw, smooth_window_hours)
+    climatology = _smooth_cycle(
+        climatology_raw,
+        reference_bins,
+        smooth_window_hours,
+        np,
+        smooth_min_periods,
+        calendar_mode,
+    )
     threshold_raw = _nanpercentile_by_bin_cpu(reference, reference_bins, nbins, percentile)
-    threshold_cycle = smooth_circular_cpu(threshold_raw, smooth_window_hours)
-    climatology_by_time = climatology[bins]
-    threshold = threshold_cycle[bins]
+    threshold_cycle = _smooth_cycle(
+        threshold_raw,
+        reference_bins,
+        smooth_window_hours,
+        np,
+        smooth_min_periods,
+        calendar_mode,
+    )
+    climatology_by_time = _cycle_by_time(climatology, bins, np)
+    threshold = _cycle_by_time(threshold_cycle, bins, np)
     anomaly = values - climatology_by_time
     excess = values - threshold
     exceedance = np.logical_and(values > threshold, ~np.isnan(values))
@@ -163,20 +273,16 @@ def _nanmean_by_bin_gpu(values: Any, bins: Any, nbins: int, cp: Any) -> Any:
     return cp.where(counts > 0, sums / counts, cp.nan)
 
 
-def _nanpercentile_by_bin_gpu(
+def _nanpercentile_by_bin_gpu_legacy(
     values: Any, bins: Any, nbins: int, percentile: float, cp: Any
 ) -> Any:
-    """NaN-aware GPU percentile without a bespoke CUDA kernel.
+    """Previous tiled percentile implementation retained for equivalence checks.
 
-    CuPy 13 does not expose ``nanpercentile``.  Sorting with CuPy and applying
-    NumPy's default linear percentile interpolation keeps the work in VRAM and
-    gives the same definition as the CPU reference.
+    It transfers the bin vector to the host and constructs per-tile gather
+    indices in Python.  Keep this private reference until the replacement has
+    been validated against it.
     """
     result = cp.full((nbins, values.shape[1]), cp.nan, dtype=values.dtype)
-    # The number of samples in an hourly climatology bin is normally the number
-    # of baseline years (small), while the number of bins is 8,784.  Tiling bins
-    # avoids one GPU launch per hour-of-year without materialising all bins at
-    # once. Every gather still contains complete series from the input batch.
     bins_cpu = cp.asnumpy(bins)
     populated_bins = np.unique(bins_cpu)
     tile_size = 256
@@ -192,6 +298,47 @@ def _nanpercentile_by_bin_gpu(
         grouped = values[cp.asarray(gather_indices)]
         grouped = cp.where(cp.asarray(present)[..., None], grouped, cp.nan)
         result[cp.asarray(tile_bins)] = _nanpercentile_grouped_gpu(grouped, percentile, cp)
+    return result
+
+
+def _nanpercentile_by_bin_gpu(
+    values: Any, bins: Any, nbins: int, percentile: float, cp: Any
+) -> Any:
+    """NaN-aware tiled percentile, retaining bin grouping on the GPU.
+
+    CuPy has no ``nanpercentile``.  The calculation therefore still sorts each
+    bounded ``(bin, baseline_sample, point)`` tile, but GPU sorting of the bin
+    vector replaces the previous host copy and Python construction of one row
+    list per populated bin.  One scalar maximum tile count is read per tile to
+    preserve the previous bounded temporary allocation for irregular inputs.
+    """
+    result = cp.full((nbins, values.shape[1]), cp.nan, dtype=values.dtype)
+    tile_size = 256
+
+    # Stable ordering is unnecessary because every gathered group is sorted
+    # again by _nanpercentile_grouped_gpu.  It only needs to make equal-bin rows
+    # contiguous so that searchsorted can describe each ragged group.
+    row_order = cp.argsort(bins)
+    sorted_bins = bins[row_order]
+    populated_bins = cp.unique(sorted_bins)
+
+    for tile_start in range(0, populated_bins.size, tile_size):
+        tile_bins = populated_bins[tile_start : tile_start + tile_size]
+        starts = cp.searchsorted(sorted_bins, tile_bins, side="left")
+        stops = cp.searchsorted(sorted_bins, tile_bins, side="right")
+        counts = stops - starts
+
+        # A scalar read keeps this ragged tile compact even for unusual input
+        # calendars.  The former implementation already synchronised once per
+        # tile while transferring its gather metadata, but moved the full bin
+        # vector and did all group construction on the CPU.
+        max_rows = int(counts.max())
+        positions = starts[:, None] + cp.arange(max_rows, dtype=starts.dtype)
+        present = positions < stops[:, None]
+        safe_positions = cp.minimum(positions, values.shape[0] - 1)
+        grouped = values[row_order[safe_positions]]
+        grouped = cp.where(present[..., None], grouped, cp.nan)
+        result[tile_bins] = _nanpercentile_grouped_gpu(grouped, percentile, cp)
     return result
 
 
@@ -236,20 +383,39 @@ def gpu_pre_event_fields(
     percentile: float = 0.90,
     smooth_window_hours: int = 120,
     nbins: int = HOURS_PER_LEAP_YEAR,
+    smooth_min_periods: int = 1,
+    calendar_mode: str = CALENDAR_MODE_MONTH_DAY_HOUR,
 ) -> PreEventFields:
     """CuPy pre-event pipeline; inputs and outputs remain in GPU VRAM."""
     from .memory import cupy
 
     cp = cupy()
-    _validate_inputs(values, bins, baseline_indices, percentile, smooth_window_hours, nbins)
+    _validate_inputs(
+        values, bins, baseline_indices, percentile, smooth_window_hours, smooth_min_periods, nbins
+    )
+    _validate_calendar_mode(calendar_mode)
     reference = values[baseline_indices]
     reference_bins = bins[baseline_indices]
     climatology_raw = _nanmean_by_bin_gpu(reference, reference_bins, nbins, cp)
-    climatology = _smooth_circular(climatology_raw, smooth_window_hours, cp)
+    climatology = _smooth_cycle(
+        climatology_raw,
+        reference_bins,
+        smooth_window_hours,
+        cp,
+        smooth_min_periods,
+        calendar_mode,
+    )
     threshold_raw = _nanpercentile_by_bin_gpu(reference, reference_bins, nbins, percentile, cp)
-    threshold_cycle = _smooth_circular(threshold_raw, smooth_window_hours, cp)
-    climatology_by_time = climatology[bins]
-    threshold = threshold_cycle[bins]
+    threshold_cycle = _smooth_cycle(
+        threshold_raw,
+        reference_bins,
+        smooth_window_hours,
+        cp,
+        smooth_min_periods,
+        calendar_mode,
+    )
+    climatology_by_time = _cycle_by_time(climatology, bins, cp)
+    threshold = _cycle_by_time(threshold_cycle, bins, cp)
     anomaly = values - climatology_by_time
     excess = values - threshold
     exceedance = cp.logical_and(values > threshold, ~cp.isnan(values))
@@ -271,6 +437,7 @@ def _validate_inputs(
     baseline_indices: Any,
     percentile: float,
     smooth_window_hours: int,
+    smooth_min_periods: int,
     nbins: int,
 ) -> None:
     if values.ndim != 2:
@@ -283,3 +450,12 @@ def _validate_inputs(
         raise ValueError("percentile must be strictly between 0 and 1")
     if not 1 <= smooth_window_hours <= nbins:
         raise ValueError("smooth_window_hours must be between 1 and the climatological cycle length")
+    if not 1 <= smooth_min_periods <= smooth_window_hours:
+        raise ValueError("smooth_min_periods must be between 1 and smooth_window_hours")
+
+
+def _validate_calendar_mode(calendar_mode: str) -> None:
+    if calendar_mode not in _CALENDAR_MODES:
+        raise ValueError(
+            f"calendar_mode must be one of {sorted(_CALENDAR_MODES)!r}; got {calendar_mode!r}"
+        )

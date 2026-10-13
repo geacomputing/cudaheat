@@ -1,0 +1,68 @@
+[
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Presentation Benchmark",
+    "benchmark_id": "full_pipeline_presentation",
+    "npoints": 32,
+    "host_read_seconds": 0.3670298616658935,
+    "host_prepare_seconds": 7.049990623878936e-07,
+    "transfer_to_device_seconds": 0.0008588450000388548,
+    "gpu_compute_seconds": 0.036836692810058594,
+    "transfer_from_device_seconds": 0.0009956703324860428,
+    "pipeline_wall_seconds": 0.41537758333288366
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Presentation Benchmark",
+    "benchmark_id": "full_pipeline_presentation",
+    "npoints": 128,
+    "host_read_seconds": 0.3674024776664737,
+    "host_prepare_seconds": 8.113347575999796e-07,
+    "transfer_to_device_seconds": 0.003744861667655641,
+    "gpu_compute_seconds": 0.04195269266764323,
+    "transfer_from_device_seconds": 0.0011852423316061806,
+    "pipeline_wall_seconds": 0.43112335400049534
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Presentation Benchmark",
+    "benchmark_id": "full_pipeline_presentation",
+    "npoints": 512,
+    "host_read_seconds": 0.3836173503344374,
+    "host_prepare_seconds": 8.646663142523418e-07,
+    "transfer_to_device_seconds": 0.010847118999663508,
+    "gpu_compute_seconds": 0.08420599365234376,
+    "transfer_from_device_seconds": 0.0014138716675612766,
+    "pipeline_wall_seconds": 0.5039546266683222
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Presentation Benchmark",
+    "benchmark_id": "full_pipeline_presentation",
+    "npoints": 2000,
+    "host_read_seconds": 1.6597963009990053,
+    "host_prepare_seconds": 6.643349479418248e-07,
+    "transfer_to_device_seconds": 0.04153795433254951,
+    "gpu_compute_seconds": 0.4305511881510417,
+    "transfer_from_device_seconds": 0.0015573533322215856,
+    "pipeline_wall_seconds": 2.166626558667
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Presentation Benchmark",
+    "benchmark_id": "full_pipeline_presentation",
+    "npoints": 8000,
+    "host_read_seconds": 7.163428875667402,
+    "host_prepare_seconds": 3.408998357675349e-06,
+    "transfer_to_device_seconds": 0.19292122700062464,
+    "gpu_compute_seconds": 1.8625716145833333,
+    "transfer_from_device_seconds": 0.006725633331370773,
+    "pipeline_wall_seconds": 9.348638327333902
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Presentation Benchmark",
+    "benchmark_id": "full_pipeline_presentation",
+    "npoints": 22083,
+    "host_read_seconds": 20.34615064533379,
+    "host_prepare_seconds": 8.792666145988429e-06,
+    "transfer_to_device_seconds": 0.5057044316648293,
+    "gpu_compute_seconds": 5.334478200276692,
+    "transfer_from_device_seconds": 0.018246546328252105,
+    "pipeline_wall_seconds": 26.543330140000762
+  }
+]

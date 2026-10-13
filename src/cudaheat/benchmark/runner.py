@@ -138,6 +138,7 @@ class CUDAHeatBenchmark:
             devices=self.engine.devices,
             time_dim=self.engine.time_dim,
             point_indices=point_selection,
+            calendar_mode=self.engine.calendar_mode,
         )
 
     @staticmethod
@@ -153,7 +154,13 @@ class CUDAHeatBenchmark:
             return perf_counter() - start
         rows = baseline_rows(engine._time, pipeline_kwargs.get("baseline"))
         percentile = pipeline_kwargs.get("percentile", 0.90)
-        smooth_window_hours = pipeline_kwargs.get("smooth_window_hours", 120)
+        smooth_window_hours = engine._resolve_smooth_window_hours(
+            pipeline_kwargs.get("smooth_window_hours")
+        )
+        smooth_min_periods = engine._resolve_smooth_min_periods(
+            smooth_window_hours, pipeline_kwargs.get("smooth_min_periods")
+        )
+        climatology_nbins = engine._climatology_nbins(rows)
         # This cap limits host RAM, but every calculation still receives all time.
         cpu_batch_size = min(engine.npoints, 256)
         seconds = 0.0
@@ -161,7 +168,16 @@ class CUDAHeatBenchmark:
             point_stop = min(point_start + cpu_batch_size, engine.npoints)
             values = engine._load_spatial_batch(point_start, point_stop, dtype)
             start = perf_counter()
-            fields = cpu_pre_event_fields(values, engine._bins, rows, percentile, smooth_window_hours)
+            fields = cpu_pre_event_fields(
+                values,
+                engine._bins,
+                rows,
+                percentile,
+                smooth_window_hours,
+                climatology_nbins,
+                smooth_min_periods,
+                engine.calendar_mode,
+            )
             seconds += perf_counter() - start
             del fields
         return seconds
@@ -260,7 +276,9 @@ class CUDAHeatBenchmark:
             requested_batch_size=requested_batch_size,
             baseline=pipeline_kwargs.get("baseline"),
             percentile=pipeline_kwargs.get("percentile", 0.90),
-            smooth_window_hours=pipeline_kwargs.get("smooth_window_hours", 120),
+            smooth_window_hours=engine._resolve_smooth_window_hours(
+                pipeline_kwargs.get("smooth_window_hours")
+            ),
         )
 
     def summary(self) -> dict[str, dict[str, Any]]:
@@ -312,7 +330,9 @@ class CUDAHeatBenchmark:
             "cpu_dtype": cpu_dtype,
             "baseline": pipeline_kwargs.get("baseline"),
             "percentile": pipeline_kwargs.get("percentile", 0.90),
-            "smooth_window_hours": pipeline_kwargs.get("smooth_window_hours", 120),
+            "smooth_window_hours": self.engine._resolve_smooth_window_hours(
+                pipeline_kwargs.get("smooth_window_hours")
+            ),
         }
 
 

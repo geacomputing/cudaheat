@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from cudaheat.detection import detect_events
+from cudaheat.detection import fill_internal_gaps, detect_events
 
 
 def test_detect_events_finds_and_filters_contiguous_runs_without_python_scans():
@@ -49,3 +49,30 @@ def test_detect_events_does_not_keep_short_runs_or_nan_samples():
 
     assert fields.events.start.size == 0
     assert fields.labels is None
+
+
+def test_fill_internal_gaps_fills_only_short_bounded_false_runs():
+    exceedance = np.array(
+        [
+            [False, True],
+            [True, True],
+            [False, False],
+            [True, False],
+            [True, True],
+            [False, True],
+        ]
+    )
+
+    actual = fill_internal_gaps(exceedance, 1, xp=np)
+
+    np.testing.assert_array_equal(
+        actual,
+        [
+            [False, True],
+            [True, True],
+            [True, False],
+            [True, False],
+            [True, True],
+            [False, True],
+        ],
+    )

@@ -7,9 +7,17 @@ cp = pytest.importorskip("cupy")
 if cp.cuda.runtime.getDeviceCount() < 1:  # pragma: no cover - hardware dependent
     pytest.skip("CUDA device unavailable", allow_module_level=True)
 
-from cudaheat.climatology import cpu_pre_event_fields, gpu_pre_event_fields, hourly_climatology_index
+from cudaheat.climatology import (
+    CALENDAR_MODE_DAY_OF_YEAR,
+    _nanpercentile_by_bin_gpu,
+    _nanpercentile_by_bin_gpu_legacy,
+    cpu_pre_event_fields,
+    gpu_pre_event_fields,
+    hourly_climatology_index,
+)
 from cudaheat.benchmark import CUDAHeatBenchmark
 from cudaheat.core import BatchOutput, CUDAHeat
+from cudaheat.detection import fill_internal_gaps, _fill_internal_gaps_legacy
 from cudaheat.memory import BatchTelemetry
 from cudaheat.validation import select_validation_points
 
@@ -26,6 +34,33 @@ def test_gpu_matches_cpu_reference_with_nan_and_float32(synthetic_sst):
     np.testing.assert_array_equal(cp.asnumpy(gpu.exceedance), cpu.exceedance)
 
 
+@pytest.mark.parametrize("dtype", (np.float32, np.float64))
+def test_gpu_percentile_grouping_matches_legacy_for_ragged_bins_and_nans(dtype):
+    rng = np.random.default_rng(91)
+    bins = np.array([4, 1, 4, 1, 4, 7, 7, 4, 2, 1, 7, 2, 2, 2, 4, 1, 7], dtype=np.int32)
+    values = rng.normal(size=(bins.size, 5)).astype(dtype)
+    values[[1, 4, 12], [3, 0, 4]] = np.nan
+
+    legacy = _nanpercentile_by_bin_gpu_legacy(
+        cp.asarray(values), cp.asarray(bins), 9, 0.9, cp
+    )
+    optimized = _nanpercentile_by_bin_gpu(cp.asarray(values), cp.asarray(bins), 9, 0.9, cp)
+
+    np.testing.assert_array_equal(cp.asnumpy(optimized), cp.asnumpy(legacy))
+
+
+def test_gpu_gap_fill_float16_delta_matches_legacy_int32_delta():
+    exceedance = np.ones((104, 3), dtype=bool)
+    exceedance[[1, 7, 8, 44, 45, 46, 100], 0] = False
+    exceedance[[11, 12, 50, 99], 1] = False
+    exceedance[[0, 30, 31, 32, 103], 2] = False
+
+    legacy = _fill_internal_gaps_legacy(cp.asarray(exceedance), 2, xp=cp)
+    optimized = fill_internal_gaps(cp.asarray(exceedance), 2, xp=cp)
+
+    np.testing.assert_array_equal(cp.asnumpy(optimized), cp.asnumpy(legacy))
+
+
 def test_engine_stacks_space_preserves_all_time_and_returns_mask(synthetic_sst):
     with CUDAHeat(synthetic_sst, variable="analysed_sst", dtype="float32", vram_safety=0.30) as hw:
         assert hw.ntime == synthetic_sst.sizes["time"]
@@ -40,6 +75,21 @@ def test_engine_stacks_space_preserves_all_time_and_returns_mask(synthetic_sst):
         assert result.data["mask"].dtype == bool
         assert result.data["threshold_raw"].dims == ("climatology_hour", "lat", "lon")
         assert len(result.telemetry) >= 1
+
+
+def test_engine_dayofyear_mode_uses_hourwave_bins_and_metadata(synthetic_sst):
+    with CUDAHeat(
+        synthetic_sst,
+        variable="analysed_sst",
+        dtype="float32",
+        calendar_mode=CALENDAR_MODE_DAY_OF_YEAR,
+    ) as hw:
+        assert hw._resolve_smooth_window_hours(None) == 15 * 24
+        result = hw.run(smooth_window_hours=3, return_fields={"climatology", "threshold"})
+
+    assert result.data["climatology"].sizes["climatology_hour"] == synthetic_sst.sizes["time"]
+    assert result.metadata["calendar_mode"] == CALENDAR_MODE_DAY_OF_YEAR
+    assert result.metadata["smooth_min_periods"] == 3
 
 
 def test_engine_opens_netcdf_then_loads_complete_time_by_spatial_batch(synthetic_sst, tmp_path):

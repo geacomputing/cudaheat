@@ -107,9 +107,11 @@ class VRAMEstimator:
     """Estimate a safe point-only batch size without ever partitioning time.
 
     The estimate reserves float arrays for SST, climatology, threshold, anomaly,
-    excess, and two reduction/percentile work arrays.  It additionally reserves
-    a boolean mask and applies a workspace multiplier.  Actual allocations are
-    recorded in :class:`BatchTelemetry` and OOM recovery remains authoritative.
+    excess, and two reduction/percentile work arrays. It also reserves the
+    four hourly-cycle fields and float64 smoothing prefix sums (even for a
+    float32 pipeline). It additionally reserves a boolean mask and applies a
+    workspace multiplier. Actual allocations are recorded in
+    :class:`BatchTelemetry` and OOM recovery remains authoritative.
     """
 
     def __init__(
@@ -119,6 +121,7 @@ class VRAMEstimator:
         safety_fraction: float = 0.30,
         float_arrays: int = 7,
         workspace_multiplier: float = 1.20,
+        cycle_length: int = 366 * 24,
     ) -> None:
         if ntime < 1:
             raise ValueError("ntime must be positive")
@@ -126,17 +129,24 @@ class VRAMEstimator:
             raise ValueError("itemsize must correspond to float32 or float64")
         if not 0 <= safety_fraction < 1:
             raise ValueError("vram_safety must be in [0, 1)")
-        if float_arrays < 1 or workspace_multiplier < 1:
+        if float_arrays < 1 or workspace_multiplier < 1 or cycle_length < 1:
             raise ValueError("memory estimate parameters must be positive and conservative")
         self.ntime = ntime
         self.itemsize = itemsize
         self.safety_fraction = safety_fraction
         self.float_arrays = float_arrays
         self.workspace_multiplier = workspace_multiplier
+        self.cycle_length = cycle_length
 
     @property
     def bytes_per_point(self) -> int:
-        raw = self.ntime * (self.itemsize * self.float_arrays + 1)  # + one boolean mask
+        time_arrays = self.ntime * (self.itemsize * self.float_arrays + 1)
+        # Four retained raw/smoothed cycle fields, a padded float workspace,
+        # its validity mask, and two float64 prefix sums used for stable
+        # rolling means. This matters for short inputs where a fixed annual
+        # cycle otherwise dominates the allocation.
+        cycle_workspace = self.cycle_length * (5 * self.itemsize + 1 + 2 * 8)
+        raw = time_arrays + cycle_workspace
         return int(raw * self.workspace_multiplier)
 
     def estimate(self, free_bytes: int, npoints: int) -> BatchEstimate:

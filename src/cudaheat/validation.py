@@ -342,7 +342,8 @@ def validate_cpu_gpu(
     gpu_dtype: str = "float32",
     baseline: tuple[int, int] | None = None,
     percentile: float = 0.90,
-    smooth_window_hours: int = 120,
+    smooth_window_hours: int | None = None,
+    smooth_min_periods: int | None = None,
     validation_batch_size: int | None = None,
     relative_epsilon: float = 1e-12,
     maximum_examples: int = 20,
@@ -367,7 +368,12 @@ def validate_cpu_gpu(
     if validation_batch_size is not None and validation_batch_size < 1:
         raise ValueError("validation_batch_size must be positive")
     active_batch_size = min(validation_batch_size or 256, selected.size)
+    smooth_window_hours = engine._resolve_smooth_window_hours(smooth_window_hours)
     rows = baseline_rows(engine._time, baseline)
+    climatology_nbins = engine._climatology_nbins(rows)
+    resolved_smooth_min_periods = engine._resolve_smooth_min_periods(
+        smooth_window_hours, smooth_min_periods
+    )
     float_names = (
         "climatology_raw",
         "climatology",
@@ -387,10 +393,27 @@ def validate_cpu_gpu(
             local_indices = selected[offset : offset + current_size]
             cpu_values = _load_points(engine, local_indices, np.dtype("float64"))
             cpu_fields = cpu_pre_event_fields(
-                cpu_values, engine._bins, rows, percentile, smooth_window_hours
+                cpu_values,
+                engine._bins,
+                rows,
+                percentile,
+                smooth_window_hours,
+                climatology_nbins,
+                resolved_smooth_min_periods,
+                engine.calendar_mode,
             )
             try:
-                gpu_fields = _gpu_fields(engine, cpu_values, gpu_dtype_value, rows, percentile, smooth_window_hours)
+                gpu_fields = _gpu_fields(
+                    engine,
+                    cpu_values,
+                    gpu_dtype_value,
+                    rows,
+                    percentile,
+                    smooth_window_hours,
+                    climatology_nbins,
+                    resolved_smooth_min_periods,
+                    engine.calendar_mode,
+                )
             except Exception as exc:
                 if not engine._is_gpu_oom(exc):
                     raise
@@ -455,13 +478,25 @@ def _gpu_fields(
     rows: np.ndarray,
     percentile: float,
     smooth_window_hours: int,
+    climatology_nbins: int,
+    smooth_min_periods: int,
+    calendar_mode: str,
 ) -> PreEventFields:
     cp = cupy()
     with cp.cuda.Device(engine.device_id):
         values = cp.asarray(cpu_values.astype(gpu_dtype, copy=False))
         bins = cp.asarray(engine._bins)
         gpu_rows = cp.asarray(rows)
-        fields = gpu_pre_event_fields(values, bins, gpu_rows, percentile, smooth_window_hours)
+        fields = gpu_pre_event_fields(
+            values,
+            bins,
+            gpu_rows,
+            percentile,
+            smooth_window_hours,
+            climatology_nbins,
+            smooth_min_periods,
+            calendar_mode,
+        )
         copied = PreEventFields(*(cp.asnumpy(getattr(fields, name)) for name in fields.__dataclass_fields__))
         del fields, values, bins, gpu_rows
         release_gpu_memory(engine.device_id)

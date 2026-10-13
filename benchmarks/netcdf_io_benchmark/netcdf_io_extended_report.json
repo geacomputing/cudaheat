@@ -1,0 +1,798 @@
+{
+  "schema_version": "2.0",
+  "created_utc": "2026-10-09T19:48:49.282232+00:00",
+  "environment": {
+    "python": "3.14.1",
+    "numpy": "2.3.5",
+    "netcdf4_c": "4.9.3",
+    "platform": "Linux-7.0.0-29-generic-x86_64-with-glibc2.39"
+  },
+  "file": {
+    "basename": "sst_8_years.nc",
+    "size_GiB": 1.4
+  },
+  "settings": {
+    "file": "/home/user/Documents/PhD.cy/lazy_loading/cudaHeat/sst_8_years.nc",
+    "variable": "analysed_sst",
+    "points": 2000,
+    "batch_sizes": "64,128,256,512,1024,2000,3000,5000",
+    "repeats": 10,
+    "max_read_mib": 4096.0,
+    "time_hours": 168,
+    "full_sweep": true,
+    "sweep_points": 2000,
+    "sweep_time_block": 0,
+    "mask_sample_hours": 100,
+    "json": "netcdf_io_extended_report.json"
+  },
+  "tests": {
+    "single_point_full_raw": {
+      "seconds": [
+        0.022851,
+        0.001057,
+        0.000645,
+        0.000427,
+        0.000392,
+        0.000346,
+        0.000335,
+        0.000345,
+        0.000337,
+        0.000351
+      ],
+      "median_seconds": 0.000371,
+      "first_seconds": 0.022851,
+      "output_bytes": 136032,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 349.45,
+      "shape": [
+        68016,
+        1,
+        1
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 52.73,
+      "rss_max_observed_MiB": 61.82,
+      "chunk_access_estimate": {
+        "chunks": 32,
+        "chunk_uncompressed_MiB": 7.007
+      }
+    },
+    "single_point_full_cf": {
+      "seconds": [
+        0.001473,
+        0.001024,
+        0.000938,
+        0.001029,
+        0.000974,
+        0.001527,
+        0.001717,
+        0.001585,
+        0.001818,
+        0.00131
+      ],
+      "median_seconds": 0.001392,
+      "first_seconds": 0.001473,
+      "output_bytes": 544128,
+      "output_dtype": "float64",
+      "output_MiB_per_s": 372.88,
+      "shape": [
+        68016,
+        1,
+        1
+      ],
+      "mode": "cf",
+      "rss_before_MiB": 61.82,
+      "rss_max_observed_MiB": 63.12,
+      "chunk_access_estimate": {
+        "chunks": 32,
+        "chunk_uncompressed_MiB": 7.007
+      }
+    },
+    "tile_8x8_64points_raw": {
+      "seconds": [
+        0.078425,
+        0.008309,
+        0.007622,
+        0.007837,
+        0.008513,
+        0.008557,
+        0.008194,
+        0.008008,
+        0.007876,
+        0.007868
+      ],
+      "median_seconds": 0.008101,
+      "first_seconds": 0.078425,
+      "output_bytes": 8706048,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 1024.88,
+      "shape": [
+        68016,
+        8,
+        8
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 63.12,
+      "rss_max_observed_MiB": 85.84,
+      "chunk_access_estimate": {
+        "chunks": 128,
+        "chunk_uncompressed_MiB": 28.028
+      }
+    },
+    "row_strip_1x64_raw": {
+      "seconds": [
+        0.195975,
+        0.008319,
+        0.007946,
+        0.007955,
+        0.008029,
+        0.008087,
+        0.008449,
+        0.007923,
+        0.007979,
+        0.007373
+      ],
+      "median_seconds": 0.008004,
+      "first_seconds": 0.195975,
+      "output_bytes": 8706048,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 1037.33,
+      "shape": [
+        68016,
+        1,
+        64
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 85.84,
+      "rss_max_observed_MiB": 134.52,
+      "chunk_access_estimate": {
+        "chunks": 256,
+        "chunk_uncompressed_MiB": 56.057
+      }
+    },
+    "tile_11x11_121points_raw": {
+      "seconds": [
+        0.126208,
+        0.013814,
+        0.013119,
+        0.012575,
+        0.012409,
+        0.011934,
+        0.012296,
+        0.012261,
+        0.012181,
+        0.012138
+      ],
+      "median_seconds": 0.012352,
+      "first_seconds": 0.126208,
+      "output_bytes": 16459872,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 1270.82,
+      "shape": [
+        68016,
+        11,
+        11
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 134.52,
+      "rss_max_observed_MiB": 151.57,
+      "chunk_access_estimate": {
+        "chunks": 192,
+        "chunk_uncompressed_MiB": 42.042
+      }
+    },
+    "row_strip_1x128_raw": {
+      "seconds": [
+        0.303013,
+        0.326151,
+        0.32856,
+        0.32485,
+        0.317269,
+        0.31525,
+        0.31585,
+        0.315928,
+        0.31547,
+        0.316313
+      ],
+      "median_seconds": 0.31612,
+      "first_seconds": 0.303013,
+      "output_bytes": 17412096,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 52.53,
+      "shape": [
+        68016,
+        1,
+        128
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 151.57,
+      "rss_max_observed_MiB": 155.88,
+      "chunk_access_estimate": {
+        "chunks": 480,
+        "chunk_uncompressed_MiB": 105.106
+      }
+    },
+    "tile_16x16_256points_raw": {
+      "seconds": [
+        0.182647,
+        0.049994,
+        0.07963,
+        0.06788,
+        0.080538,
+        0.050021,
+        0.099322,
+        0.049211,
+        0.048908,
+        0.10675
+      ],
+      "median_seconds": 0.073755,
+      "first_seconds": 0.182647,
+      "output_bytes": 34824192,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 450.29,
+      "shape": [
+        68016,
+        16,
+        16
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 155.89,
+      "rss_max_observed_MiB": 155.89,
+      "chunk_access_estimate": {
+        "chunks": 288,
+        "chunk_uncompressed_MiB": 63.064
+      }
+    },
+    "row_strip_1x256_raw": {
+      "seconds": [
+        0.589657,
+        0.596256,
+        0.592252,
+        0.587812,
+        0.589445,
+        0.589866,
+        0.60235,
+        0.591485,
+        0.586956,
+        0.590531
+      ],
+      "median_seconds": 0.590198,
+      "first_seconds": 0.589657,
+      "output_bytes": 34824192,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 56.27,
+      "shape": [
+        68016,
+        1,
+        256
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 155.89,
+      "rss_max_observed_MiB": 160.34,
+      "chunk_access_estimate": {
+        "chunks": 928,
+        "chunk_uncompressed_MiB": 203.205
+      }
+    },
+    "tile_23x22_506points_raw": {
+      "seconds": [
+        0.47453,
+        0.264445,
+        0.276488,
+        0.290192,
+        0.271464,
+        0.27074,
+        0.294674,
+        0.266547,
+        0.27285,
+        0.290483
+      ],
+      "median_seconds": 0.274669,
+      "first_seconds": 0.47453,
+      "output_bytes": 68832192,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 238.99,
+      "shape": [
+        68016,
+        23,
+        22
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 160.34,
+      "rss_max_observed_MiB": 160.35,
+      "chunk_access_estimate": {
+        "chunks": 480,
+        "chunk_uncompressed_MiB": 105.106
+      }
+    },
+    "row_strip_2x257_raw": {
+      "seconds": [
+        0.600157,
+        0.602391,
+        0.605135,
+        0.605178,
+        0.607508,
+        0.610567,
+        0.605804,
+        0.605702,
+        0.608005,
+        0.607832
+      ],
+      "median_seconds": 0.605753,
+      "first_seconds": 0.600157,
+      "output_bytes": 69920448,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 110.08,
+      "shape": [
+        68016,
+        2,
+        257
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 160.35,
+      "rss_max_observed_MiB": 160.35,
+      "chunk_access_estimate": {
+        "chunks": 928,
+        "chunk_uncompressed_MiB": 203.205
+      }
+    },
+    "tile_32x32_1024points_raw": {
+      "seconds": [
+        0.750698,
+        0.479001,
+        0.495298,
+        0.491679,
+        0.496978,
+        0.485438,
+        0.507487,
+        0.486056,
+        0.497036,
+        0.491396
+      ],
+      "median_seconds": 0.493488,
+      "first_seconds": 0.750698,
+      "output_bytes": 139296768,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 269.19,
+      "shape": [
+        68016,
+        32,
+        32
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 160.35,
+      "rss_max_observed_MiB": 160.35,
+      "chunk_access_estimate": {
+        "chunks": 768,
+        "chunk_uncompressed_MiB": 168.17
+      }
+    },
+    "row_strip_4x257_raw": {
+      "seconds": [
+        0.620868,
+        0.624382,
+        0.633921,
+        0.634749,
+        0.635179,
+        0.650276,
+        0.642977,
+        0.644732,
+        0.632444,
+        0.632776
+      ],
+      "median_seconds": 0.634335,
+      "first_seconds": 0.620868,
+      "output_bytes": 139840896,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 210.24,
+      "shape": [
+        68016,
+        4,
+        257
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 160.35,
+      "rss_max_observed_MiB": 160.35,
+      "chunk_access_estimate": {
+        "chunks": 928,
+        "chunk_uncompressed_MiB": 203.205
+      }
+    },
+    "tile_45x44_1980points_raw": {
+      "seconds": [
+        1.340206,
+        1.100528,
+        1.109513,
+        1.103709,
+        1.103009,
+        1.108051,
+        1.107133,
+        1.095827,
+        1.093964,
+        1.117214
+      ],
+      "median_seconds": 1.105421,
+      "first_seconds": 1.340206,
+      "output_bytes": 269343360,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 232.37,
+      "shape": [
+        68016,
+        45,
+        44
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 160.36,
+      "rss_max_observed_MiB": 160.36,
+      "chunk_access_estimate": {
+        "chunks": 1728,
+        "chunk_uncompressed_MiB": 378.382
+      }
+    },
+    "tile_45x44_1980points_cf": {
+      "seconds": [
+        1.844038,
+        1.861486,
+        1.821564,
+        1.851822,
+        1.769516,
+        1.774269,
+        1.770014,
+        1.781352,
+        1.792605,
+        1.792754
+      ],
+      "median_seconds": 1.792679,
+      "first_seconds": 1.844038,
+      "output_bytes": 1077373440,
+      "output_dtype": "float64",
+      "output_MiB_per_s": 573.14,
+      "shape": [
+        68016,
+        45,
+        44
+      ],
+      "mode": "cf",
+      "rss_before_MiB": 160.36,
+      "rss_max_observed_MiB": 160.36,
+      "chunk_access_estimate": {
+        "chunks": 1728,
+        "chunk_uncompressed_MiB": 378.382
+      }
+    },
+    "tile_45x44_1980points_manual32": {
+      "seconds": [
+        1.359256,
+        1.335352,
+        1.338144,
+        1.304254,
+        1.305944,
+        1.306384,
+        1.307485,
+        1.333092,
+        1.352458,
+        1.324432
+      ],
+      "median_seconds": 1.328762,
+      "first_seconds": 1.359256,
+      "output_bytes": 538686720,
+      "output_dtype": "float32",
+      "output_MiB_per_s": 386.62,
+      "shape": [
+        68016,
+        45,
+        44
+      ],
+      "mode": "manual32",
+      "rss_before_MiB": 160.36,
+      "rss_max_observed_MiB": 160.37,
+      "chunk_access_estimate": {
+        "chunks": 1728,
+        "chunk_uncompressed_MiB": 378.382
+      }
+    },
+    "row_strip_8x257_raw": {
+      "seconds": [
+        1.442612,
+        1.308403,
+        1.309325,
+        1.308424,
+        1.309827,
+        1.308956,
+        1.310715,
+        1.308623,
+        1.322404,
+        1.332366
+      ],
+      "median_seconds": 1.309576,
+      "first_seconds": 1.442612,
+      "output_bytes": 279681792,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 203.67,
+      "shape": [
+        68016,
+        8,
+        257
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 160.37,
+      "rss_max_observed_MiB": 160.37,
+      "chunk_access_estimate": {
+        "chunks": 1856,
+        "chunk_uncompressed_MiB": 406.411
+      }
+    },
+    "tile_55x54_2970points_raw": {
+      "seconds": [
+        1.594201,
+        1.523243,
+        1.523018,
+        1.53528,
+        1.526667,
+        1.467748,
+        1.425483,
+        1.438124,
+        1.426202,
+        1.437424
+      ],
+      "median_seconds": 1.495383,
+      "first_seconds": 1.594201,
+      "output_bytes": 404015040,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 257.66,
+      "shape": [
+        68016,
+        55,
+        54
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 160.38,
+      "rss_max_observed_MiB": 160.38,
+      "chunk_access_estimate": {
+        "chunks": 2240,
+        "chunk_uncompressed_MiB": 490.496
+      }
+    },
+    "row_strip_12x257_raw": {
+      "seconds": [
+        2.036683,
+        1.882406,
+        1.883962,
+        1.884628,
+        1.893678,
+        1.890805,
+        1.885585,
+        1.883853,
+        1.885146,
+        1.886807
+      ],
+      "median_seconds": 1.885365,
+      "first_seconds": 2.036683,
+      "output_bytes": 419522688,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 212.21,
+      "shape": [
+        68016,
+        12,
+        257
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 160.38,
+      "rss_max_observed_MiB": 160.38,
+      "chunk_access_estimate": {
+        "chunks": 2784,
+        "chunk_uncompressed_MiB": 609.616
+      }
+    },
+    "tile_71x70_4970points_raw": {
+      "seconds": [
+        2.910555,
+        2.371664,
+        2.358722,
+        2.36216,
+        2.35814,
+        2.366187,
+        2.379249,
+        2.360787,
+        2.356993,
+        2.357948
+      ],
+      "median_seconds": 2.361474,
+      "first_seconds": 2.910555,
+      "output_bytes": 676079040,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 273.03,
+      "shape": [
+        68016,
+        71,
+        70
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 160.38,
+      "rss_max_observed_MiB": 160.38,
+      "chunk_access_estimate": {
+        "chunks": 3744,
+        "chunk_uncompressed_MiB": 819.828
+      }
+    },
+    "row_strip_20x257_raw": {
+      "seconds": [
+        2.709684,
+        2.539207,
+        2.526614,
+        2.525173,
+        2.521841,
+        2.514454,
+        2.511474,
+        2.536724,
+        2.545706,
+        2.539685
+      ],
+      "median_seconds": 2.531669,
+      "first_seconds": 2.709684,
+      "output_bytes": 699204480,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 263.39,
+      "shape": [
+        68016,
+        20,
+        257
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 160.38,
+      "rss_max_observed_MiB": 160.38,
+      "chunk_access_estimate": {
+        "chunks": 3712,
+        "chunk_uncompressed_MiB": 812.821
+      }
+    },
+    "short_time_full_grid_raw": {
+      "seconds": [
+        0.54743,
+        0.433152,
+        0.432943,
+        0.431532,
+        0.432982,
+        0.431344,
+        0.432038,
+        0.432864,
+        0.433115,
+        0.43238
+      ],
+      "median_seconds": 0.432904,
+      "first_seconds": 0.54743,
+      "output_bytes": 13902672,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 30.63,
+      "shape": [
+        168,
+        161,
+        257
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 160.38,
+      "rss_max_observed_MiB": 173.64,
+      "chunk_access_estimate": {
+        "chunks": 783,
+        "chunk_uncompressed_MiB": 171.454
+      }
+    },
+    "physical_chunk_raw": {
+      "seconds": [
+        0.000594,
+        0.000121,
+        0.000102,
+        9.9e-05,
+        9.8e-05,
+        9.9e-05,
+        9.6e-05,
+        9.6e-05,
+        9.5e-05,
+        0.000101
+      ],
+      "median_seconds": 9.9e-05,
+      "first_seconds": 0.000594,
+      "output_bytes": 229608,
+      "output_dtype": "int16",
+      "output_MiB_per_s": 2212.15,
+      "shape": [
+        2126,
+        6,
+        9
+      ],
+      "mode": "raw",
+      "rss_before_MiB": 173.64,
+      "rss_max_observed_MiB": 173.64,
+      "chunk_access_estimate": {
+        "chunks": 1,
+        "chunk_uncompressed_MiB": 0.219
+      }
+    }
+  },
+  "warnings": [
+    "Read timings are warm-cache influenced. No OS cache eviction is attempted.",
+    "Chunk-access estimates represent intersected uncompressed chunks, not measured disk I/O or decompression time.",
+    "The memory budget is estimated, not an enforced RSS cap."
+  ],
+  "variable": {
+    "dimensions": [
+      "time",
+      "latitude",
+      "longitude"
+    ],
+    "shape": [
+      68016,
+      161,
+      257
+    ],
+    "dtype": "int16",
+    "chunks": [
+      2126,
+      6,
+      9
+    ],
+    "filters": {
+      "zlib": true,
+      "szip": false,
+      "zstd": false,
+      "bzip2": false,
+      "blosc": false,
+      "shuffle": true,
+      "complevel": 5,
+      "fletcher32": false
+    },
+    "attributes": {
+      "_FillValue": -32768,
+      "valid_max": 4500,
+      "units": "kelvin",
+      "long_name": "analysed sea surface temperature",
+      "valid_min": -300,
+      "standard_name": "sea_surface_subskin_temperature",
+      "add_offset": 273.1499938964844,
+      "scale_factor": 0.009999999776482582
+    },
+    "spatial_points": 41377,
+    "uncompressed_GiB": 5.242,
+    "compression_ratio_vs_raw": 3.744
+  },
+  "mask_sample": {
+    "hours_sampled": 100,
+    "points_never_valid_in_sample": 19294,
+    "fraction_never_valid_in_sample": 0.4663,
+    "note": "Only a candidate land mask; intermittent missing observations can cause false land classification."
+  },
+  "full_sweep": {
+    "batch_points": 2000,
+    "time_block": 68016,
+    "mode": "raw",
+    "strategy": "flat contiguous points, decomposed into contiguous row segments",
+    "batches": 21,
+    "reads": 181,
+    "output_GiB": 5.242,
+    "total_seconds": 82.556,
+    "per_batch_seconds": [
+      3.37467,
+      3.89336,
+      4.28595,
+      4.53472,
+      4.77411,
+      4.77692,
+      4.81602,
+      4.68071,
+      4.27369,
+      4.51716,
+      4.52771,
+      3.94779,
+      3.61025,
+      3.66515,
+      3.48942,
+      3.44236,
+      3.45991,
+      3.45871,
+      3.46999,
+      3.34577,
+      2.21109
+    ],
+    "throughput_MiB_per_s": 65.02
+  }
+}

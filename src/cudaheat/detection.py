@@ -53,6 +53,22 @@ def fill_internal_gaps(exceedance: Any, max_internal_gap_hours: int, *, xp: Any)
     The input remains unchanged: the raw exceedance mask is retained by the
     caller for later metrics, while this returned mask controls detection.
     """
+    return _fill_internal_gaps_with_delta_dtype(
+        exceedance, max_internal_gap_hours, xp=xp, delta_dtype=xp.float16
+    )
+
+
+def _fill_internal_gaps_legacy(exceedance: Any, max_internal_gap_hours: int, *, xp: Any) -> Any:
+    """Previous int32 gap-fill implementation, retained for equivalence checks."""
+    return _fill_internal_gaps_with_delta_dtype(
+        exceedance, max_internal_gap_hours, xp=xp, delta_dtype=xp.int32
+    )
+
+
+def _fill_internal_gaps_with_delta_dtype(
+    exceedance: Any, max_internal_gap_hours: int, *, xp: Any, delta_dtype: Any
+) -> Any:
+    """Fill internal gaps using a compact dense interval-delta representation."""
     _validate_nonnegative_hours(max_internal_gap_hours, "max_internal_gap_hours")
     if exceedance.ndim != 2:
         raise ValueError("exceedance must have shape (time, point)")
@@ -74,11 +90,14 @@ def fill_internal_gaps(exceedance: Any, max_internal_gap_hours: int, *, xp: Any)
     points = gaps.point[fillable]
 
     # A single difference array scatters every interval boundary, then one
-    # scan reconstructs all fillable gaps without per-gap slicing.
-    deltas = xp.zeros((ntime + 1, npoints), dtype=xp.int32)
+    # scan reconstructs all fillable gaps without per-gap slicing.  Maximal
+    # False runs cannot overlap within a point, so both the deltas and their
+    # prefix sum are exactly -1, 0, or 1.  float16 represents those values
+    # exactly and is the smallest dtype CuPy scatter-add supports.
+    deltas = xp.zeros((ntime + 1, npoints), dtype=delta_dtype)
     xp.add.at(deltas, (starts, points), 1)
     xp.add.at(deltas, (stops, points), -1)
-    gap_fill = xp.cumsum(deltas[:-1], axis=0, dtype=xp.int32) > 0
+    gap_fill = xp.cumsum(deltas[:-1], axis=0, dtype=delta_dtype) > 0
     return xp.logical_or(exceedance, gap_fill)
 
 

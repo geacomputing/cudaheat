@@ -1,0 +1,62 @@
+[
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Presentation Benchmark",
+    "benchmark_id": "full_pipeline_presentation",
+    "npoints": 32,
+    "dtype": "float32",
+    "gpu_compute_values_per_second": 59378824.76504453,
+    "gpu_end_to_end_values_per_second": 56509033.53122976,
+    "compute_speedup": 36.209035208501255,
+    "pipeline_speedup": 3.195394300299102
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Presentation Benchmark",
+    "benchmark_id": "full_pipeline_presentation",
+    "npoints": 128,
+    "dtype": "float32",
+    "gpu_compute_values_per_second": 207535391.08373132,
+    "gpu_end_to_end_values_per_second": 185758851.8551811,
+    "compute_speedup": 36.64587149398763,
+    "pipeline_speedup": 3.5662842453436308
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Presentation Benchmark",
+    "benchmark_id": "full_pipeline_presentation",
+    "npoints": 512,
+    "dtype": "float32",
+    "gpu_compute_values_per_second": 416602956.3218768,
+    "gpu_end_to_end_values_per_second": 363090957.23325014,
+    "compute_speedup": 42.40750196326062,
+    "pipeline_speedup": 7.0373227318167295
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Presentation Benchmark",
+    "benchmark_id": "full_pipeline_presentation",
+    "npoints": 2000,
+    "dtype": "float32",
+    "gpu_compute_values_per_second": 315992060.0432798,
+    "gpu_end_to_end_values_per_second": 287234412.5062024,
+    "compute_speedup": 32.4682782638831,
+    "pipeline_speedup": 6.4523250016509275
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Presentation Benchmark",
+    "benchmark_id": "full_pipeline_presentation",
+    "npoints": 8000,
+    "dtype": "float32",
+    "gpu_compute_values_per_second": 292431699.8617877,
+    "gpu_end_to_end_values_per_second": 263969662.91228512,
+    "compute_speedup": 30.387969117583697,
+    "pipeline_speedup": 6.0495620690342635
+  },
+  {
+    "benchmark_name": "CUDAHeat Full-Pipeline Presentation Benchmark",
+    "benchmark_id": "full_pipeline_presentation",
+    "npoints": 22083,
+    "dtype": "float32",
+    "gpu_compute_values_per_second": 281722631.33871096,
+    "gpu_end_to_end_values_per_second": 256566820.62705326,
+    "compute_speedup": 29.31792248440495,
+    "pipeline_speedup": 5.889271842413675
+  }
+]

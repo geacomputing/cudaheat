@@ -1,0 +1,1436 @@
+{
+  "input": "/home/user/Documents/PhD.cy/lazy_loading/cudaHeat/sst_8_years.nc",
+  "settings": {
+    "input": "/home/user/Documents/PhD.cy/lazy_loading/cudaHeat/sst_8_years.nc",
+    "output_dir": "storage_test",
+    "variable": "analysed_sst",
+    "chunks": "4,8,16,24,32,48,64,96,128,192,256,512",
+    "batch_points": "64,128,256,512,1024,2048",
+    "repeats": 3,
+    "keep_optimized": false,
+    "scan_hours": 24,
+    "compression": 5,
+    "max_chunk_mib": 256,
+    "time_dim": null,
+    "lat_dim": null,
+    "lon_dim": null
+  },
+  "results": [
+    {
+      "chunk_points": 4,
+      "optimized_file_retained": false,
+      "requested_batch_points": 64,
+      "chunk_uncompressed_mib": 0.5189208984375,
+      "file": "storage_test/sst_time_point_chunk_4.nc",
+      "file_bytes": 1539041383,
+      "verified_points": 14,
+      "effective_batch_points": 64,
+      "read_seconds": [
+        8.55522325399943,
+        8.524195164999583,
+        8.526326144999985
+      ],
+      "median_seconds": 8.526326144999985,
+      "original_median_seconds": 61.77383431199996,
+      "speedup_vs_original_ocean_only": 7.245070533482399,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 4,
+      "optimized_file_retained": false,
+      "requested_batch_points": 128,
+      "chunk_uncompressed_mib": 0.5189208984375,
+      "file": "storage_test/sst_time_point_chunk_4.nc",
+      "file_bytes": 1539041383,
+      "verified_points": 14,
+      "effective_batch_points": 128,
+      "read_seconds": [
+        9.255047639000622,
+        9.225271622999571,
+        9.217366650999793
+      ],
+      "median_seconds": 9.225271622999571,
+      "original_median_seconds": 63.84960103699996,
+      "speedup_vs_original_ocean_only": 6.921162177796066,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 4,
+      "optimized_file_retained": false,
+      "requested_batch_points": 256,
+      "chunk_uncompressed_mib": 0.5189208984375,
+      "file": "storage_test/sst_time_point_chunk_4.nc",
+      "file_bytes": 1539041383,
+      "verified_points": 14,
+      "effective_batch_points": 256,
+      "read_seconds": [
+        10.280912967999939,
+        10.290185320000091,
+        10.308025554999404
+      ],
+      "median_seconds": 10.290185320000091,
+      "original_median_seconds": 70.58502484000019,
+      "speedup_vs_original_ocean_only": 6.859451277598523,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 4,
+      "optimized_file_retained": false,
+      "requested_batch_points": 512,
+      "chunk_uncompressed_mib": 0.5189208984375,
+      "file": "storage_test/sst_time_point_chunk_4.nc",
+      "file_bytes": 1539041383,
+      "verified_points": 14,
+      "effective_batch_points": 512,
+      "read_seconds": [
+        10.863872420999542,
+        10.859201659000064,
+        10.842013358999793
+      ],
+      "median_seconds": 10.859201659000064,
+      "original_median_seconds": 73.77587875500012,
+      "speedup_vs_original_ocean_only": 6.7938584319276325,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 4,
+      "optimized_file_retained": false,
+      "requested_batch_points": 1024,
+      "chunk_uncompressed_mib": 0.5189208984375,
+      "file": "storage_test/sst_time_point_chunk_4.nc",
+      "file_bytes": 1539041383,
+      "verified_points": 14,
+      "effective_batch_points": 1024,
+      "read_seconds": [
+        11.755606837999949,
+        11.755994684999678,
+        11.74236563300019
+      ],
+      "median_seconds": 11.755606837999949,
+      "original_median_seconds": 75.27976855599991,
+      "speedup_vs_original_ocean_only": 6.40373309463348,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 4,
+      "optimized_file_retained": false,
+      "requested_batch_points": 2048,
+      "chunk_uncompressed_mib": 0.5189208984375,
+      "file": "storage_test/sst_time_point_chunk_4.nc",
+      "file_bytes": 1539041383,
+      "verified_points": 14,
+      "effective_batch_points": 2048,
+      "read_seconds": [
+        12.534140523999667,
+        12.514974415000324,
+        12.553160037000453
+      ],
+      "median_seconds": 12.534140523999667,
+      "original_median_seconds": 82.35268147599982,
+      "speedup_vs_original_ocean_only": 6.570269522534516,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 8,
+      "optimized_file_retained": false,
+      "requested_batch_points": 64,
+      "chunk_uncompressed_mib": 1.037841796875,
+      "file": "storage_test/sst_time_point_chunk_8.nc",
+      "file_bytes": 1511535719,
+      "verified_points": 14,
+      "effective_batch_points": 64,
+      "read_seconds": [
+        8.535819153000375,
+        8.55518003599991,
+        8.550661451000451
+      ],
+      "median_seconds": 8.550661451000451,
+      "original_median_seconds": 61.77383431199996,
+      "speedup_vs_original_ocean_only": 7.224450958091933,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 8,
+      "optimized_file_retained": false,
+      "requested_batch_points": 128,
+      "chunk_uncompressed_mib": 1.037841796875,
+      "file": "storage_test/sst_time_point_chunk_8.nc",
+      "file_bytes": 1511535719,
+      "verified_points": 14,
+      "effective_batch_points": 128,
+      "read_seconds": [
+        8.68477612300012,
+        8.67531765900003,
+        8.68202013500013
+      ],
+      "median_seconds": 8.68202013500013,
+      "original_median_seconds": 63.84960103699996,
+      "speedup_vs_original_ocean_only": 7.354233236525315,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 8,
+      "optimized_file_retained": false,
+      "requested_batch_points": 256,
+      "chunk_uncompressed_mib": 1.037841796875,
+      "file": "storage_test/sst_time_point_chunk_8.nc",
+      "file_bytes": 1511535719,
+      "verified_points": 14,
+      "effective_batch_points": 256,
+      "read_seconds": [
+        9.283634441000686,
+        9.29367036900021,
+        9.279283795000083
+      ],
+      "median_seconds": 9.283634441000686,
+      "original_median_seconds": 70.58502484000019,
+      "speedup_vs_original_ocean_only": 7.603167195841439,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 8,
+      "optimized_file_retained": false,
+      "requested_batch_points": 512,
+      "chunk_uncompressed_mib": 1.037841796875,
+      "file": "storage_test/sst_time_point_chunk_8.nc",
+      "file_bytes": 1511535719,
+      "verified_points": 14,
+      "effective_batch_points": 512,
+      "read_seconds": [
+        9.513452475999657,
+        9.511232100999223,
+        9.524830187000589
+      ],
+      "median_seconds": 9.513452475999657,
+      "original_median_seconds": 73.77587875500012,
+      "speedup_vs_original_ocean_only": 7.7549006463342725,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 8,
+      "optimized_file_retained": false,
+      "requested_batch_points": 1024,
+      "chunk_uncompressed_mib": 1.037841796875,
+      "file": "storage_test/sst_time_point_chunk_8.nc",
+      "file_bytes": 1511535719,
+      "verified_points": 14,
+      "effective_batch_points": 1024,
+      "read_seconds": [
+        9.963484210000388,
+        9.95859060299972,
+        9.943638841000393
+      ],
+      "median_seconds": 9.95859060299972,
+      "original_median_seconds": 75.27976855599991,
+      "speedup_vs_original_ocean_only": 7.5592793756703065,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 8,
+      "optimized_file_retained": false,
+      "requested_batch_points": 2048,
+      "chunk_uncompressed_mib": 1.037841796875,
+      "file": "storage_test/sst_time_point_chunk_8.nc",
+      "file_bytes": 1511535719,
+      "verified_points": 14,
+      "effective_batch_points": 2048,
+      "read_seconds": [
+        10.37119587899997,
+        10.369364260999646,
+        10.374473474000297
+      ],
+      "median_seconds": 10.37119587899997,
+      "original_median_seconds": 82.35268147599982,
+      "speedup_vs_original_ocean_only": 7.940519341916101,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 16,
+      "optimized_file_retained": false,
+      "requested_batch_points": 64,
+      "chunk_uncompressed_mib": 2.07568359375,
+      "file": "storage_test/sst_time_point_chunk_16.nc",
+      "file_bytes": 1490183708,
+      "verified_points": 14,
+      "effective_batch_points": 64,
+      "read_seconds": [
+        8.37688861100014,
+        8.4496861359994,
+        8.451871907999703
+      ],
+      "median_seconds": 8.4496861359994,
+      "original_median_seconds": 61.77383431199996,
+      "speedup_vs_original_ocean_only": 7.310784485688304,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 16,
+      "optimized_file_retained": false,
+      "requested_batch_points": 128,
+      "chunk_uncompressed_mib": 2.07568359375,
+      "file": "storage_test/sst_time_point_chunk_16.nc",
+      "file_bytes": 1490183708,
+      "verified_points": 14,
+      "effective_batch_points": 128,
+      "read_seconds": [
+        8.60579136099932,
+        8.567524103999858,
+        8.556415368999296
+      ],
+      "median_seconds": 8.567524103999858,
+      "original_median_seconds": 63.84960103699996,
+      "speedup_vs_original_ocean_only": 7.4525148995134955,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 16,
+      "optimized_file_retained": false,
+      "requested_batch_points": 256,
+      "chunk_uncompressed_mib": 2.07568359375,
+      "file": "storage_test/sst_time_point_chunk_16.nc",
+      "file_bytes": 1490183708,
+      "verified_points": 14,
+      "effective_batch_points": 256,
+      "read_seconds": [
+        9.104645417000029,
+        9.101810823999585,
+        9.10168956400048
+      ],
+      "median_seconds": 9.101810823999585,
+      "original_median_seconds": 70.58502484000019,
+      "speedup_vs_original_ocean_only": 7.755052945495431,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 16,
+      "optimized_file_retained": false,
+      "requested_batch_points": 512,
+      "chunk_uncompressed_mib": 2.07568359375,
+      "file": "storage_test/sst_time_point_chunk_16.nc",
+      "file_bytes": 1490183708,
+      "verified_points": 14,
+      "effective_batch_points": 512,
+      "read_seconds": [
+        9.173112614000274,
+        9.159027702999992,
+        9.155883282000104
+      ],
+      "median_seconds": 9.159027702999992,
+      "original_median_seconds": 73.77587875500012,
+      "speedup_vs_original_ocean_only": 8.054990239939466,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 16,
+      "optimized_file_retained": false,
+      "requested_batch_points": 1024,
+      "chunk_uncompressed_mib": 2.07568359375,
+      "file": "storage_test/sst_time_point_chunk_16.nc",
+      "file_bytes": 1490183708,
+      "verified_points": 14,
+      "effective_batch_points": 1024,
+      "read_seconds": [
+        9.2128235400005,
+        9.21235863899983,
+        9.209184905999791
+      ],
+      "median_seconds": 9.21235863899983,
+      "original_median_seconds": 75.27976855599991,
+      "speedup_vs_original_ocean_only": 8.171606372043382,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 16,
+      "optimized_file_retained": false,
+      "requested_batch_points": 2048,
+      "chunk_uncompressed_mib": 2.07568359375,
+      "file": "storage_test/sst_time_point_chunk_16.nc",
+      "file_bytes": 1490183708,
+      "verified_points": 14,
+      "effective_batch_points": 2048,
+      "read_seconds": [
+        9.48055395099982,
+        9.472627380000631,
+        9.470145353999214
+      ],
+      "median_seconds": 9.472627380000631,
+      "original_median_seconds": 82.35268147599982,
+      "speedup_vs_original_ocean_only": 8.693752870493922,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 24,
+      "optimized_file_retained": false,
+      "requested_batch_points": 64,
+      "chunk_uncompressed_mib": 3.113525390625,
+      "file": "storage_test/sst_time_point_chunk_24.nc",
+      "file_bytes": 1482970582,
+      "verified_points": 14,
+      "effective_batch_points": 48,
+      "read_seconds": [
+        8.112901727999997,
+        8.210912556999574,
+        8.21218835199943
+      ],
+      "median_seconds": 8.210912556999574,
+      "original_median_seconds": 61.77383431199996,
+      "speedup_vs_original_ocean_only": 7.523382313862238,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 24,
+      "optimized_file_retained": false,
+      "requested_batch_points": 128,
+      "chunk_uncompressed_mib": 3.113525390625,
+      "file": "storage_test/sst_time_point_chunk_24.nc",
+      "file_bytes": 1482970582,
+      "verified_points": 14,
+      "effective_batch_points": 120,
+      "read_seconds": [
+        8.475171033000152,
+        8.461148563999814,
+        8.464826955000717
+      ],
+      "median_seconds": 8.464826955000717,
+      "original_median_seconds": 63.84960103699996,
+      "speedup_vs_original_ocean_only": 7.542930455215023,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 24,
+      "optimized_file_retained": false,
+      "requested_batch_points": 256,
+      "chunk_uncompressed_mib": 3.113525390625,
+      "file": "storage_test/sst_time_point_chunk_24.nc",
+      "file_bytes": 1482970582,
+      "verified_points": 14,
+      "effective_batch_points": 240,
+      "read_seconds": [
+        8.2551768000003,
+        8.291734974000065,
+        8.325287741000466
+      ],
+      "median_seconds": 8.291734974000065,
+      "original_median_seconds": 70.58502484000019,
+      "speedup_vs_original_ocean_only": 8.51269668668014,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 24,
+      "optimized_file_retained": false,
+      "requested_batch_points": 512,
+      "chunk_uncompressed_mib": 3.113525390625,
+      "file": "storage_test/sst_time_point_chunk_24.nc",
+      "file_bytes": 1482970582,
+      "verified_points": 14,
+      "effective_batch_points": 504,
+      "read_seconds": [
+        8.643750083000668,
+        8.625341529000252,
+        8.61085921599988
+      ],
+      "median_seconds": 8.625341529000252,
+      "original_median_seconds": 73.77587875500012,
+      "speedup_vs_original_ocean_only": 8.55338637976824,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 24,
+      "optimized_file_retained": false,
+      "requested_batch_points": 1024,
+      "chunk_uncompressed_mib": 3.113525390625,
+      "file": "storage_test/sst_time_point_chunk_24.nc",
+      "file_bytes": 1482970582,
+      "verified_points": 14,
+      "effective_batch_points": 1008,
+      "read_seconds": [
+        8.49506360399937,
+        8.486853278000126,
+        8.483309387999725
+      ],
+      "median_seconds": 8.486853278000126,
+      "original_median_seconds": 75.27976855599991,
+      "speedup_vs_original_ocean_only": 8.870162602096865,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 24,
+      "optimized_file_retained": false,
+      "requested_batch_points": 2048,
+      "chunk_uncompressed_mib": 3.113525390625,
+      "file": "storage_test/sst_time_point_chunk_24.nc",
+      "file_bytes": 1482970582,
+      "verified_points": 14,
+      "effective_batch_points": 2040,
+      "read_seconds": [
+        8.58270670300044,
+        8.591599796000082,
+        8.588724163000734
+      ],
+      "median_seconds": 8.588724163000734,
+      "original_median_seconds": 82.35268147599982,
+      "speedup_vs_original_ocean_only": 9.588465051743771,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 32,
+      "optimized_file_retained": false,
+      "requested_batch_points": 64,
+      "chunk_uncompressed_mib": 4.1513671875,
+      "file": "storage_test/sst_time_point_chunk_32.nc",
+      "file_bytes": 1478641822,
+      "verified_points": 14,
+      "effective_batch_points": 64,
+      "read_seconds": [
+        8.076424021999628,
+        8.201851919000546,
+        8.195343213000342
+      ],
+      "median_seconds": 8.195343213000342,
+      "original_median_seconds": 61.77383431199996,
+      "speedup_vs_original_ocean_only": 7.537675080405126,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 32,
+      "optimized_file_retained": false,
+      "requested_batch_points": 128,
+      "chunk_uncompressed_mib": 4.1513671875,
+      "file": "storage_test/sst_time_point_chunk_32.nc",
+      "file_bytes": 1478641822,
+      "verified_points": 14,
+      "effective_batch_points": 128,
+      "read_seconds": [
+        8.360392507000142,
+        8.363382882000224,
+        8.370260407999922
+      ],
+      "median_seconds": 8.363382882000224,
+      "original_median_seconds": 63.84960103699996,
+      "speedup_vs_original_ocean_only": 7.6344228092699025,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 32,
+      "optimized_file_retained": false,
+      "requested_batch_points": 256,
+      "chunk_uncompressed_mib": 4.1513671875,
+      "file": "storage_test/sst_time_point_chunk_32.nc",
+      "file_bytes": 1478641822,
+      "verified_points": 14,
+      "effective_batch_points": 256,
+      "read_seconds": [
+        8.520999302000746,
+        8.493908676000501,
+        8.673878468999646
+      ],
+      "median_seconds": 8.520999302000746,
+      "original_median_seconds": 70.58502484000019,
+      "speedup_vs_original_ocean_only": 8.283655747211093,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 32,
+      "optimized_file_retained": false,
+      "requested_batch_points": 512,
+      "chunk_uncompressed_mib": 4.1513671875,
+      "file": "storage_test/sst_time_point_chunk_32.nc",
+      "file_bytes": 1478641822,
+      "verified_points": 14,
+      "effective_batch_points": 512,
+      "read_seconds": [
+        8.742464566000308,
+        8.746387412000331,
+        8.750874543999998
+      ],
+      "median_seconds": 8.746387412000331,
+      "original_median_seconds": 73.77587875500012,
+      "speedup_vs_original_ocean_only": 8.43501154016768,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 32,
+      "optimized_file_retained": false,
+      "requested_batch_points": 1024,
+      "chunk_uncompressed_mib": 4.1513671875,
+      "file": "storage_test/sst_time_point_chunk_32.nc",
+      "file_bytes": 1478641822,
+      "verified_points": 14,
+      "effective_batch_points": 1024,
+      "read_seconds": [
+        8.743472064999878,
+        8.738239114999487,
+        8.732581553999808
+      ],
+      "median_seconds": 8.738239114999487,
+      "original_median_seconds": 75.27976855599991,
+      "speedup_vs_original_ocean_only": 8.614981527202614,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 32,
+      "optimized_file_retained": false,
+      "requested_batch_points": 2048,
+      "chunk_uncompressed_mib": 4.1513671875,
+      "file": "storage_test/sst_time_point_chunk_32.nc",
+      "file_bytes": 1478641822,
+      "verified_points": 14,
+      "effective_batch_points": 2048,
+      "read_seconds": [
+        8.862272491000112,
+        8.866902517999733,
+        8.877943534999758
+      ],
+      "median_seconds": 8.866902517999733,
+      "original_median_seconds": 82.35268147599982,
+      "speedup_vs_original_ocean_only": 9.287649357689972,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 48,
+      "optimized_file_retained": false,
+      "requested_batch_points": 64,
+      "chunk_uncompressed_mib": 6.22705078125,
+      "file": "storage_test/sst_time_point_chunk_48.nc",
+      "file_bytes": 1478074070,
+      "verified_points": 14,
+      "effective_batch_points": 48,
+      "read_seconds": [
+        7.909919401000479,
+        7.983210126999438,
+        7.968282655999246
+      ],
+      "median_seconds": 7.968282655999246,
+      "original_median_seconds": 61.77383431199996,
+      "speedup_vs_original_ocean_only": 7.752465239858304,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 48,
+      "optimized_file_retained": false,
+      "requested_batch_points": 128,
+      "chunk_uncompressed_mib": 6.22705078125,
+      "file": "storage_test/sst_time_point_chunk_48.nc",
+      "file_bytes": 1478074070,
+      "verified_points": 14,
+      "effective_batch_points": 96,
+      "read_seconds": [
+        8.109262443000262,
+        8.08612367600017,
+        8.088318088000051
+      ],
+      "median_seconds": 8.088318088000051,
+      "original_median_seconds": 63.84960103699996,
+      "speedup_vs_original_ocean_only": 7.894051685693244,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 48,
+      "optimized_file_retained": false,
+      "requested_batch_points": 256,
+      "chunk_uncompressed_mib": 6.22705078125,
+      "file": "storage_test/sst_time_point_chunk_48.nc",
+      "file_bytes": 1478074070,
+      "verified_points": 14,
+      "effective_batch_points": 240,
+      "read_seconds": [
+        8.307451994000076,
+        8.259000488999845,
+        8.33006401700004
+      ],
+      "median_seconds": 8.307451994000076,
+      "original_median_seconds": 70.58502484000019,
+      "speedup_vs_original_ocean_only": 8.496591360501283,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 48,
+      "optimized_file_retained": false,
+      "requested_batch_points": 512,
+      "chunk_uncompressed_mib": 6.22705078125,
+      "file": "storage_test/sst_time_point_chunk_48.nc",
+      "file_bytes": 1478074070,
+      "verified_points": 14,
+      "effective_batch_points": 480,
+      "read_seconds": [
+        8.391457936999359,
+        8.380327989000762,
+        8.378627959000369
+      ],
+      "median_seconds": 8.380327989000762,
+      "original_median_seconds": 73.77587875500012,
+      "speedup_vs_original_ocean_only": 8.803459584378018,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 48,
+      "optimized_file_retained": false,
+      "requested_batch_points": 1024,
+      "chunk_uncompressed_mib": 6.22705078125,
+      "file": "storage_test/sst_time_point_chunk_48.nc",
+      "file_bytes": 1478074070,
+      "verified_points": 14,
+      "effective_batch_points": 1008,
+      "read_seconds": [
+        8.369883397999729,
+        8.388281200000165,
+        8.390730727000118
+      ],
+      "median_seconds": 8.388281200000165,
+      "original_median_seconds": 75.27976855599991,
+      "speedup_vs_original_ocean_only": 8.974397348052474,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 48,
+      "optimized_file_retained": false,
+      "requested_batch_points": 2048,
+      "chunk_uncompressed_mib": 6.22705078125,
+      "file": "storage_test/sst_time_point_chunk_48.nc",
+      "file_bytes": 1478074070,
+      "verified_points": 14,
+      "effective_batch_points": 2016,
+      "read_seconds": [
+        8.37673542399989,
+        8.381216307999239,
+        8.359090804000516
+      ],
+      "median_seconds": 8.37673542399989,
+      "original_median_seconds": 82.35268147599982,
+      "speedup_vs_original_ocean_only": 9.831118843750758,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 64,
+      "optimized_file_retained": false,
+      "requested_batch_points": 64,
+      "chunk_uncompressed_mib": 8.302734375,
+      "file": "storage_test/sst_time_point_chunk_64.nc",
+      "file_bytes": 1480245768,
+      "verified_points": 14,
+      "effective_batch_points": 64,
+      "read_seconds": [
+        7.775775934998819,
+        7.913566829998672,
+        7.852591867000228
+      ],
+      "median_seconds": 7.852591867000228,
+      "original_median_seconds": 61.77383431199996,
+      "speedup_vs_original_ocean_only": 7.866680881709724,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 64,
+      "optimized_file_retained": false,
+      "requested_batch_points": 128,
+      "chunk_uncompressed_mib": 8.302734375,
+      "file": "storage_test/sst_time_point_chunk_64.nc",
+      "file_bytes": 1480245768,
+      "verified_points": 14,
+      "effective_batch_points": 128,
+      "read_seconds": [
+        8.004190782001388,
+        8.017858768998849,
+        8.019512701001076
+      ],
+      "median_seconds": 8.017858768998849,
+      "original_median_seconds": 63.84960103699996,
+      "speedup_vs_original_ocean_only": 7.963423013121064,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 64,
+      "optimized_file_retained": false,
+      "requested_batch_points": 256,
+      "chunk_uncompressed_mib": 8.302734375,
+      "file": "storage_test/sst_time_point_chunk_64.nc",
+      "file_bytes": 1480245768,
+      "verified_points": 14,
+      "effective_batch_points": 256,
+      "read_seconds": [
+        8.24102793900056,
+        8.24015590199997,
+        8.212301167000987
+      ],
+      "median_seconds": 8.24015590199997,
+      "original_median_seconds": 70.58502484000019,
+      "speedup_vs_original_ocean_only": 8.565981721640544,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 64,
+      "optimized_file_retained": false,
+      "requested_batch_points": 512,
+      "chunk_uncompressed_mib": 8.302734375,
+      "file": "storage_test/sst_time_point_chunk_64.nc",
+      "file_bytes": 1480245768,
+      "verified_points": 14,
+      "effective_batch_points": 512,
+      "read_seconds": [
+        8.388148344000001,
+        8.393263029000082,
+        8.385876472999371
+      ],
+      "median_seconds": 8.388148344000001,
+      "original_median_seconds": 73.77587875500012,
+      "speedup_vs_original_ocean_only": 8.795252030535634,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 64,
+      "optimized_file_retained": false,
+      "requested_batch_points": 1024,
+      "chunk_uncompressed_mib": 8.302734375,
+      "file": "storage_test/sst_time_point_chunk_64.nc",
+      "file_bytes": 1480245768,
+      "verified_points": 14,
+      "effective_batch_points": 1024,
+      "read_seconds": [
+        8.371208517999548,
+        8.387074063999535,
+        8.414912668999023
+      ],
+      "median_seconds": 8.387074063999535,
+      "original_median_seconds": 75.27976855599991,
+      "speedup_vs_original_ocean_only": 8.975689016403097,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 64,
+      "optimized_file_retained": false,
+      "requested_batch_points": 2048,
+      "chunk_uncompressed_mib": 8.302734375,
+      "file": "storage_test/sst_time_point_chunk_64.nc",
+      "file_bytes": 1480245768,
+      "verified_points": 14,
+      "effective_batch_points": 2048,
+      "read_seconds": [
+        8.427417662000153,
+        8.427002870999786,
+        8.412648830000762
+      ],
+      "median_seconds": 8.427002870999786,
+      "original_median_seconds": 82.35268147599982,
+      "speedup_vs_original_ocean_only": 9.772475782511444,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 96,
+      "optimized_file_retained": false,
+      "requested_batch_points": 64,
+      "chunk_uncompressed_mib": 12.4541015625,
+      "file": "storage_test/sst_time_point_chunk_96.nc",
+      "file_bytes": 1487772814,
+      "verified_points": 14,
+      "effective_batch_points": 96,
+      "read_seconds": [
+        7.64021672600029,
+        7.734945823000089,
+        7.8327142230009486
+      ],
+      "median_seconds": 7.734945823000089,
+      "original_median_seconds": 61.77383431199996,
+      "speedup_vs_original_ocean_only": 7.986330573682061,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 96,
+      "optimized_file_retained": false,
+      "requested_batch_points": 128,
+      "chunk_uncompressed_mib": 12.4541015625,
+      "file": "storage_test/sst_time_point_chunk_96.nc",
+      "file_bytes": 1487772814,
+      "verified_points": 14,
+      "effective_batch_points": 96,
+      "read_seconds": [
+        7.750755442000809,
+        7.789650779999647,
+        7.805242110000108
+      ],
+      "median_seconds": 7.789650779999647,
+      "original_median_seconds": 63.84960103699996,
+      "speedup_vs_original_ocean_only": 8.196721886549431,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 96,
+      "optimized_file_retained": false,
+      "requested_batch_points": 256,
+      "chunk_uncompressed_mib": 12.4541015625,
+      "file": "storage_test/sst_time_point_chunk_96.nc",
+      "file_bytes": 1487772814,
+      "verified_points": 14,
+      "effective_batch_points": 192,
+      "read_seconds": [
+        8.046369691001019,
+        8.137492846000896,
+        8.070628741999826
+      ],
+      "median_seconds": 8.070628741999826,
+      "original_median_seconds": 70.58502484000019,
+      "speedup_vs_original_ocean_only": 8.745913992137108,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 96,
+      "optimized_file_retained": false,
+      "requested_batch_points": 512,
+      "chunk_uncompressed_mib": 12.4541015625,
+      "file": "storage_test/sst_time_point_chunk_96.nc",
+      "file_bytes": 1487772814,
+      "verified_points": 14,
+      "effective_batch_points": 480,
+      "read_seconds": [
+        8.079800990999502,
+        8.024818871999742,
+        8.047169139001198
+      ],
+      "median_seconds": 8.047169139001198,
+      "original_median_seconds": 73.77587875500012,
+      "speedup_vs_original_ocean_only": 9.167929427186996,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 96,
+      "optimized_file_retained": false,
+      "requested_batch_points": 1024,
+      "chunk_uncompressed_mib": 12.4541015625,
+      "file": "storage_test/sst_time_point_chunk_96.nc",
+      "file_bytes": 1487772814,
+      "verified_points": 14,
+      "effective_batch_points": 960,
+      "read_seconds": [
+        8.035022447000301,
+        8.051004315999307,
+        8.05205431899958
+      ],
+      "median_seconds": 8.051004315999307,
+      "original_median_seconds": 75.27976855599991,
+      "speedup_vs_original_ocean_only": 9.350357495946271,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 96,
+      "optimized_file_retained": false,
+      "requested_batch_points": 2048,
+      "chunk_uncompressed_mib": 12.4541015625,
+      "file": "storage_test/sst_time_point_chunk_96.nc",
+      "file_bytes": 1487772814,
+      "verified_points": 14,
+      "effective_batch_points": 2016,
+      "read_seconds": [
+        8.082742766999218,
+        8.071908040999915,
+        8.082374018000337
+      ],
+      "median_seconds": 8.082374018000337,
+      "original_median_seconds": 82.35268147599982,
+      "speedup_vs_original_ocean_only": 10.189169827156146,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 128,
+      "optimized_file_retained": false,
+      "requested_batch_points": 64,
+      "chunk_uncompressed_mib": 16.60546875,
+      "file": "storage_test/sst_time_point_chunk_128.nc",
+      "file_bytes": 1493495187,
+      "verified_points": 14,
+      "effective_batch_points": 128,
+      "read_seconds": [
+        7.724063236999427,
+        8.110691185000178,
+        8.049803964000603
+      ],
+      "median_seconds": 8.049803964000603,
+      "original_median_seconds": 61.77383431199996,
+      "speedup_vs_original_ocean_only": 7.67395511595782,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 128,
+      "optimized_file_retained": false,
+      "requested_batch_points": 128,
+      "chunk_uncompressed_mib": 16.60546875,
+      "file": "storage_test/sst_time_point_chunk_128.nc",
+      "file_bytes": 1493495187,
+      "verified_points": 14,
+      "effective_batch_points": 128,
+      "read_seconds": [
+        7.6582817640010035,
+        8.051937500998974,
+        7.665358516000197
+      ],
+      "median_seconds": 7.665358516000197,
+      "original_median_seconds": 63.84960103699996,
+      "speedup_vs_original_ocean_only": 8.32963010193512,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 128,
+      "optimized_file_retained": false,
+      "requested_batch_points": 256,
+      "chunk_uncompressed_mib": 16.60546875,
+      "file": "storage_test/sst_time_point_chunk_128.nc",
+      "file_bytes": 1493495187,
+      "verified_points": 14,
+      "effective_batch_points": 256,
+      "read_seconds": [
+        8.312560292000853,
+        8.42219807299989,
+        8.28971389599974
+      ],
+      "median_seconds": 8.312560292000853,
+      "original_median_seconds": 70.58502484000019,
+      "speedup_vs_original_ocean_only": 8.491369970323571,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 128,
+      "optimized_file_retained": false,
+      "requested_batch_points": 512,
+      "chunk_uncompressed_mib": 16.60546875,
+      "file": "storage_test/sst_time_point_chunk_128.nc",
+      "file_bytes": 1493495187,
+      "verified_points": 14,
+      "effective_batch_points": 512,
+      "read_seconds": [
+        8.194436534000488,
+        8.150461654000537,
+        8.025007575000927
+      ],
+      "median_seconds": 8.150461654000537,
+      "original_median_seconds": 73.77587875500012,
+      "speedup_vs_original_ocean_only": 9.051742329072647,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 128,
+      "optimized_file_retained": false,
+      "requested_batch_points": 1024,
+      "chunk_uncompressed_mib": 16.60546875,
+      "file": "storage_test/sst_time_point_chunk_128.nc",
+      "file_bytes": 1493495187,
+      "verified_points": 14,
+      "effective_batch_points": 1024,
+      "read_seconds": [
+        8.08686243900047,
+        8.15389078500084,
+        8.102162088998739
+      ],
+      "median_seconds": 8.102162088998739,
+      "original_median_seconds": 75.27976855599991,
+      "speedup_vs_original_ocean_only": 9.291318505984487,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 128,
+      "optimized_file_retained": false,
+      "requested_batch_points": 2048,
+      "chunk_uncompressed_mib": 16.60546875,
+      "file": "storage_test/sst_time_point_chunk_128.nc",
+      "file_bytes": 1493495187,
+      "verified_points": 14,
+      "effective_batch_points": 2048,
+      "read_seconds": [
+        8.032780208999611,
+        8.089394705999439,
+        8.124037261000922
+      ],
+      "median_seconds": 8.089394705999439,
+      "original_median_seconds": 82.35268147599982,
+      "speedup_vs_original_ocean_only": 10.180326769680748,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 192,
+      "optimized_file_retained": false,
+      "requested_batch_points": 64,
+      "chunk_uncompressed_mib": 24.908203125,
+      "file": "storage_test/sst_time_point_chunk_192.nc",
+      "file_bytes": 1497066680,
+      "verified_points": 14,
+      "effective_batch_points": 192,
+      "read_seconds": [
+        8.258679009000844,
+        8.236564025000916,
+        8.242770071999985
+      ],
+      "median_seconds": 8.242770071999985,
+      "original_median_seconds": 61.77383431199996,
+      "speedup_vs_original_ocean_only": 7.49430516348389,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 192,
+      "optimized_file_retained": false,
+      "requested_batch_points": 128,
+      "chunk_uncompressed_mib": 24.908203125,
+      "file": "storage_test/sst_time_point_chunk_192.nc",
+      "file_bytes": 1497066680,
+      "verified_points": 14,
+      "effective_batch_points": 192,
+      "read_seconds": [
+        8.240753754000252,
+        8.18555954600015,
+        8.217381648999435
+      ],
+      "median_seconds": 8.217381648999435,
+      "original_median_seconds": 63.84960103699996,
+      "speedup_vs_original_ocean_only": 7.770066398799234,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 192,
+      "optimized_file_retained": false,
+      "requested_batch_points": 256,
+      "chunk_uncompressed_mib": 24.908203125,
+      "file": "storage_test/sst_time_point_chunk_192.nc",
+      "file_bytes": 1497066680,
+      "verified_points": 14,
+      "effective_batch_points": 192,
+      "read_seconds": [
+        8.189131740000448,
+        8.215216828999473,
+        8.205840028998864
+      ],
+      "median_seconds": 8.205840028998864,
+      "original_median_seconds": 70.58502484000019,
+      "speedup_vs_original_ocean_only": 8.601803665506232,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 192,
+      "optimized_file_retained": false,
+      "requested_batch_points": 512,
+      "chunk_uncompressed_mib": 24.908203125,
+      "file": "storage_test/sst_time_point_chunk_192.nc",
+      "file_bytes": 1497066680,
+      "verified_points": 14,
+      "effective_batch_points": 384,
+      "read_seconds": [
+        8.6153964310015,
+        8.70416803199987,
+        8.727675739000915
+      ],
+      "median_seconds": 8.70416803199987,
+      "original_median_seconds": 73.77587875500012,
+      "speedup_vs_original_ocean_only": 8.475925382388255,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 192,
+      "optimized_file_retained": false,
+      "requested_batch_points": 1024,
+      "chunk_uncompressed_mib": 24.908203125,
+      "file": "storage_test/sst_time_point_chunk_192.nc",
+      "file_bytes": 1497066680,
+      "verified_points": 14,
+      "effective_batch_points": 960,
+      "read_seconds": [
+        8.719679857998926,
+        8.731490703999953,
+        8.742751375000807
+      ],
+      "median_seconds": 8.731490703999953,
+      "original_median_seconds": 75.27976855599991,
+      "speedup_vs_original_ocean_only": 8.621639890369895,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 192,
+      "optimized_file_retained": false,
+      "requested_batch_points": 2048,
+      "chunk_uncompressed_mib": 24.908203125,
+      "file": "storage_test/sst_time_point_chunk_192.nc",
+      "file_bytes": 1497066680,
+      "verified_points": 14,
+      "effective_batch_points": 1920,
+      "read_seconds": [
+        8.75971807499991,
+        8.757621889000802,
+        8.741727198999797
+      ],
+      "median_seconds": 8.757621889000802,
+      "original_median_seconds": 82.35268147599982,
+      "speedup_vs_original_ocean_only": 9.40354385240487,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 256,
+      "optimized_file_retained": false,
+      "requested_batch_points": 64,
+      "chunk_uncompressed_mib": 33.2109375,
+      "file": "storage_test/sst_time_point_chunk_256.nc",
+      "file_bytes": 1493917450,
+      "verified_points": 14,
+      "effective_batch_points": 256,
+      "read_seconds": [
+        10.402753217000281,
+        10.37739152299946,
+        10.374018229000285
+      ],
+      "median_seconds": 10.37739152299946,
+      "original_median_seconds": 61.77383431199996,
+      "speedup_vs_original_ocean_only": 5.952732358135504,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 256,
+      "optimized_file_retained": false,
+      "requested_batch_points": 128,
+      "chunk_uncompressed_mib": 33.2109375,
+      "file": "storage_test/sst_time_point_chunk_256.nc",
+      "file_bytes": 1493917450,
+      "verified_points": 14,
+      "effective_batch_points": 256,
+      "read_seconds": [
+        10.346010002000185,
+        10.370070207000026,
+        10.365126352999141
+      ],
+      "median_seconds": 10.365126352999141,
+      "original_median_seconds": 63.84960103699996,
+      "speedup_vs_original_ocean_only": 6.160040781222616,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 256,
+      "optimized_file_retained": false,
+      "requested_batch_points": 256,
+      "chunk_uncompressed_mib": 33.2109375,
+      "file": "storage_test/sst_time_point_chunk_256.nc",
+      "file_bytes": 1493917450,
+      "verified_points": 14,
+      "effective_batch_points": 256,
+      "read_seconds": [
+        10.353352701000404,
+        10.362746463999429,
+        10.36940331400001
+      ],
+      "median_seconds": 10.362746463999429,
+      "original_median_seconds": 70.58502484000019,
+      "speedup_vs_original_ocean_only": 6.811420609894801,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 256,
+      "optimized_file_retained": false,
+      "requested_batch_points": 512,
+      "chunk_uncompressed_mib": 33.2109375,
+      "file": "storage_test/sst_time_point_chunk_256.nc",
+      "file_bytes": 1493917450,
+      "verified_points": 14,
+      "effective_batch_points": 512,
+      "read_seconds": [
+        8.994570595999903,
+        9.017461608000303,
+        9.037865963999138
+      ],
+      "median_seconds": 9.017461608000303,
+      "original_median_seconds": 73.77587875500012,
+      "speedup_vs_original_ocean_only": 8.181446393910463,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 256,
+      "optimized_file_retained": false,
+      "requested_batch_points": 1024,
+      "chunk_uncompressed_mib": 33.2109375,
+      "file": "storage_test/sst_time_point_chunk_256.nc",
+      "file_bytes": 1493917450,
+      "verified_points": 14,
+      "effective_batch_points": 1024,
+      "read_seconds": [
+        9.099616341,
+        9.083072861998517,
+        9.107480759999817
+      ],
+      "median_seconds": 9.099616341,
+      "original_median_seconds": 75.27976855599991,
+      "speedup_vs_original_ocean_only": 8.272850825238974,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 256,
+      "optimized_file_retained": false,
+      "requested_batch_points": 2048,
+      "chunk_uncompressed_mib": 33.2109375,
+      "file": "storage_test/sst_time_point_chunk_256.nc",
+      "file_bytes": 1493917450,
+      "verified_points": 14,
+      "effective_batch_points": 2048,
+      "read_seconds": [
+        9.066776802999811,
+        9.094332871998631,
+        9.038742595999793
+      ],
+      "median_seconds": 9.066776802999811,
+      "original_median_seconds": 82.35268147599982,
+      "speedup_vs_original_ocean_only": 9.082906005665961,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 512,
+      "optimized_file_retained": false,
+      "requested_batch_points": 64,
+      "chunk_uncompressed_mib": 66.421875,
+      "file": "storage_test/sst_time_point_chunk_512.nc",
+      "file_bytes": 1479982793,
+      "verified_points": 14,
+      "effective_batch_points": 512,
+      "read_seconds": [
+        10.671039048998864,
+        10.64407151100022,
+        10.681555344999651
+      ],
+      "median_seconds": 10.671039048998864,
+      "original_median_seconds": 61.77383431199996,
+      "speedup_vs_original_ocean_only": 5.788924024019522,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 512,
+      "optimized_file_retained": false,
+      "requested_batch_points": 128,
+      "chunk_uncompressed_mib": 66.421875,
+      "file": "storage_test/sst_time_point_chunk_512.nc",
+      "file_bytes": 1479982793,
+      "verified_points": 14,
+      "effective_batch_points": 512,
+      "read_seconds": [
+        10.717188688999158,
+        10.707390388999556,
+        10.738779061999594
+      ],
+      "median_seconds": 10.717188688999158,
+      "original_median_seconds": 63.84960103699996,
+      "speedup_vs_original_ocean_only": 5.957681896796263,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 512,
+      "optimized_file_retained": false,
+      "requested_batch_points": 256,
+      "chunk_uncompressed_mib": 66.421875,
+      "file": "storage_test/sst_time_point_chunk_512.nc",
+      "file_bytes": 1479982793,
+      "verified_points": 14,
+      "effective_batch_points": 512,
+      "read_seconds": [
+        10.72988802600048,
+        10.658970100999795,
+        10.690801569999167
+      ],
+      "median_seconds": 10.690801569999167,
+      "original_median_seconds": 70.58502484000019,
+      "speedup_vs_original_ocean_only": 6.602407160757515,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 512,
+      "optimized_file_retained": false,
+      "requested_batch_points": 512,
+      "chunk_uncompressed_mib": 66.421875,
+      "file": "storage_test/sst_time_point_chunk_512.nc",
+      "file_bytes": 1479982793,
+      "verified_points": 14,
+      "effective_batch_points": 512,
+      "read_seconds": [
+        10.657966090000627,
+        10.68543329000022,
+        10.678786172999025
+      ],
+      "median_seconds": 10.678786172999025,
+      "original_median_seconds": 73.77587875500012,
+      "speedup_vs_original_ocean_only": 6.908639011945019,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 512,
+      "optimized_file_retained": false,
+      "requested_batch_points": 1024,
+      "chunk_uncompressed_mib": 66.421875,
+      "file": "storage_test/sst_time_point_chunk_512.nc",
+      "file_bytes": 1479982793,
+      "verified_points": 14,
+      "effective_batch_points": 1024,
+      "read_seconds": [
+        10.858527954000238,
+        10.840957331000027,
+        10.825276761999703
+      ],
+      "median_seconds": 10.840957331000027,
+      "original_median_seconds": 75.27976855599991,
+      "speedup_vs_original_ocean_only": 6.944014837207712,
+      "raw_payload_mib": 2864.832550048828
+    },
+    {
+      "chunk_points": 512,
+      "optimized_file_retained": false,
+      "requested_batch_points": 2048,
+      "chunk_uncompressed_mib": 66.421875,
+      "file": "storage_test/sst_time_point_chunk_512.nc",
+      "file_bytes": 1479982793,
+      "verified_points": 14,
+      "effective_batch_points": 2048,
+      "read_seconds": [
+        10.899826127000779,
+        10.906868269999904,
+        10.91992519500127
+      ],
+      "median_seconds": 10.906868269999904,
+      "original_median_seconds": 82.35268147599982,
+      "speedup_vs_original_ocean_only": 7.550534162268794,
+      "raw_payload_mib": 2864.832550048828
+    }
+  ],
+  "dataset": {
+    "shape": [
+      68016,
+      161,
+      257
+    ],
+    "original_points": 41377,
+    "ocean_points": 22083,
+    "permanently_invalid_points": 19294,
+    "dtype": "int16",
+    "original_chunking": [
+      2126,
+      6,
+      9
+    ]
+  },
+  "original_ocean_only_seconds_by_batch": {
+    "64": [
+      61.699226552000255,
+      61.77383431199996,
+      61.79397682600029
+    ],
+    "128": [
+      63.84960103699996,
+      63.844066853000186,
+      63.88138243600042
+    ],
+    "256": [
+      70.64555184200071,
+      70.55922400600048,
+      70.58502484000019
+    ],
+    "512": [
+      73.77587875500012,
+      73.85527803500008,
+      73.7634222229999
+    ],
+    "1024": [
+      75.27505009600009,
+      75.27976855599991,
+      75.31042270299986
+    ],
+    "2048": [
+      82.36506755799928,
+      82.35268147599982,
+      82.29593131899946
+    ]
+  }
+}

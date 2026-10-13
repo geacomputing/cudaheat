@@ -35,6 +35,7 @@ class NetCDFReader:
         self.variable = variable
         self._spatial_chunk = spatial_chunk
         self._dataset: xr.Dataset | None = None
+        self._optimized_point_layout = False
         if not lazy:
             self._dataset = xr.open_dataset(source)
             return
@@ -42,9 +43,7 @@ class NetCDFReader:
         try:
             import dask.array  # noqa: F401
         except ModuleNotFoundError as exc:
-            raise ImportError(
-                "lazy=True requires Dask; install it with `pip install \"cudaheat[lazy]\"`."
-            ) from exc
+            raise ImportError("lazy=True requires Dask; reinstall cudaheat.") from exc
 
         # Metadata inspection does not materialize the SST variable. It lets
         # us preserve native on-disk chunks where they exist, preventing Dask
@@ -55,6 +54,7 @@ class NetCDFReader:
                 raise KeyError(f"variable {variable!r} is not present in the dataset")
             data = metadata[variable]
             resolved_time_dim = resolve_time_dim(data, time_dim)
+            self._optimized_point_layout = is_optimized_point_layout(data, resolved_time_dim)
             spatial_dims = tuple(dim for dim in data.dims if dim != resolved_time_dim)
             if not spatial_dims:
                 raise ValueError("SST variable needs at least one spatial dimension besides time")
@@ -96,7 +96,7 @@ class NetCDFReader:
 
     def rechunk_stacked(self, stacked: xr.DataArray) -> xr.DataArray:
         """Apply the lazy-reader spatial chunk target after native-chunk open."""
-        if not self.lazy:
+        if not self.lazy or self._optimized_point_layout:
             return stacked
         return stacked.chunk({"point": self._spatial_chunk})
 
@@ -122,6 +122,53 @@ def resolve_time_dim(source: xr.DataArray, requested: str | None) -> str:
     if len(datetime_dims) == 1:
         return datetime_dims[0]
     raise ValueError("could not identify one time dimension; pass time_dim explicitly")
+
+
+def resolve_spatial_dimensions(
+    source: xr.DataArray, dataset: xr.Dataset, *, time_dim: str
+) -> tuple[str, str, str, str]:
+    """Find 1-D CF-style latitude and longitude coordinates for a grid."""
+    candidates = tuple(dimension for dimension in source.dims if dimension != time_dim)
+    if len(candidates) != 2:
+        raise ValueError("preprocessing requires exactly two spatial dimensions besides time")
+    latitude = _find_geographic_coordinate(dataset, candidates, "latitude")
+    longitude = _find_geographic_coordinate(dataset, candidates, "longitude")
+    if latitude is None or longitude is None:
+        raise ValueError("could not identify latitude and longitude coordinates")
+    latitude_name, latitude_dim = latitude
+    longitude_name, longitude_dim = longitude
+    if latitude_dim == longitude_dim:
+        raise ValueError("latitude and longitude must use distinct spatial dimensions")
+    return latitude_dim, longitude_dim, latitude_name, longitude_name
+
+
+def is_optimized_point_layout(source: xr.DataArray, time_dim: str) -> bool:
+    """Return whether a variable is already CUDAHeat's ``time × point`` layout."""
+    return tuple(dimension for dimension in source.dims if dimension != time_dim) == ("point",)
+
+
+def _find_geographic_coordinate(
+    dataset: xr.Dataset, dimensions: tuple[str, ...], kind: str
+) -> tuple[str, str] | None:
+    aliases = {"latitude": {"latitude", "lat"}, "longitude": {"longitude", "lon"}}[kind]
+    for name, coordinate in dataset.variables.items():
+        if coordinate.ndim != 1 or coordinate.dims[0] not in dimensions:
+            continue
+        lowered = name.lower()
+        attrs = coordinate.attrs
+        standard_name = str(attrs.get("standard_name", "")).lower()
+        axis = str(attrs.get("axis", "")).upper()
+        units = str(attrs.get("units", "")).lower()
+        expected_axis = "Y" if kind == "latitude" else "X"
+        expected_units = "degrees_north" if kind == "latitude" else "degrees_east"
+        if (
+            lowered in aliases
+            or standard_name == kind
+            or axis == expected_axis
+            or expected_units in units
+        ):
+            return name, coordinate.dims[0]
+    return None
 
 
 def _has_native_chunks(chunks: Any, ndim: int) -> bool:
