@@ -28,7 +28,7 @@ class BenchmarkRecord:
     timestamp: str | None = None
     status: str = "complete"
     error: str | None = None
-    cpu_dtype: str = "float64"
+    cpu_dtype: str | None = "float64"
     gpu_name: str | None = None
     total_vram_bytes: int | None = None
     used_vram_before_bytes: int | None = None
@@ -150,7 +150,9 @@ def summarize_values(values: Iterable[float | None]) -> MetricSummary | None:
     )
 
 
-def summarize_records(records: Iterable[BenchmarkRecord]) -> dict[str, dict[str, MetricSummary | None]]:
+def summarize_records(
+    records: Iterable[BenchmarkRecord],
+) -> dict[str, dict[str, MetricSummary | None]]:
     """Summarize timings, speedups, and throughput by measured configuration."""
     grouped: dict[str, list[BenchmarkRecord]] = {}
     for record in records:

@@ -31,3 +31,29 @@ def test_timestamped_presentation_run_directories_are_never_reused(tmp_path):
     assert first != second
     assert first.name.startswith("presentation_")
     assert second.name.startswith("presentation_")
+
+
+def test_gpu_campaign_rows_drop_cpu_performance_metrics():
+    module = _load_module()
+
+    row = module._gpu_row(
+        {
+            "gpu_compute_seconds": 1.0,
+            "cpu_compute_seconds": 4.0,
+            "compute_speedup": 4.0,
+            "pipeline_speedup": 2.0,
+            "cpu_dtype": "float64",
+        }
+    )
+
+    assert row == {"gpu_compute_seconds": 1.0}
+
+
+def test_gpu_campaign_keeps_artifacts_in_one_run_directory(tmp_path):
+    module = _load_module()
+    root = tmp_path / "run"
+
+    layout = module._create_layout(root)
+
+    assert root.is_dir()
+    assert set(layout.values()) == {root}

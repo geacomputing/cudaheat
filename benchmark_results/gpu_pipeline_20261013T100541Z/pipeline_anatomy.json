@@ -1,0 +1,70 @@
+{
+  "description": "Full-domain pipeline stage timings.",
+  "purpose": "Explain where full-pipeline seconds are spent.",
+  "methodology": "Mean of automatic-batch float32 scale-test records.",
+  "units": {
+    "*_seconds": "seconds",
+    "gpu_*_values_per_second": "values per second",
+    "*_vram_bytes": "bytes",
+    "safety_fraction": "fraction of runtime-free VRAM reserved",
+    "npoints": "spatial points",
+    "ntime": "hourly samples",
+    "percentile": "fraction"
+  },
+  "records": [
+    {
+      "npoints": 22083,
+      "component": "Host read",
+      "seconds": 20.931514971999906,
+      "pipeline_wall_seconds": 26.928418524000033
+    },
+    {
+      "npoints": 22083,
+      "component": "Host preparation",
+      "seconds": 8.119333415379515e-06,
+      "pipeline_wall_seconds": 26.928418524000033
+    },
+    {
+      "npoints": 22083,
+      "component": "GPU allocation",
+      "seconds": 0.008336474333494456,
+      "pipeline_wall_seconds": 26.928418524000033
+    },
+    {
+      "npoints": 22083,
+      "component": "GPU metadata transfer",
+      "seconds": 0.019090220000104335,
+      "pipeline_wall_seconds": 26.928418524000033
+    },
+    {
+      "npoints": 22083,
+      "component": "Host to GPU transfer",
+      "seconds": 0.5078800030000821,
+      "pipeline_wall_seconds": 26.928418524000033
+    },
+    {
+      "npoints": 22083,
+      "component": "GPU compute",
+      "seconds": 5.1338001937866204,
+      "pipeline_wall_seconds": 26.928418524000033
+    },
+    {
+      "npoints": 22083,
+      "component": "GPU to host transfer",
+      "seconds": 0.018454805000070944,
+      "pipeline_wall_seconds": 26.928418524000033
+    },
+    {
+      "npoints": 22083,
+      "component": "Result assembly",
+      "seconds": 0.0011653659998955845,
+      "pipeline_wall_seconds": 26.928418524000033
+    },
+    {
+      "npoints": 22083,
+      "component": "Unattributed pipeline overhead",
+      "seconds": 0.3081683705464435,
+      "pipeline_wall_seconds": 26.928418524000033
+    }
+  ]
+}

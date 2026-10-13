@@ -1,0 +1,196 @@
+{
+  "description": "Repeat-level GPU pipeline variability.",
+  "purpose": "Quantify measurement stability.",
+  "methodology": "Coefficient of variation across successful repeated configurations.",
+  "units": {
+    "*_seconds": "seconds",
+    "gpu_*_values_per_second": "values per second",
+    "*_vram_bytes": "bytes",
+    "safety_fraction": "fraction of runtime-free VRAM reserved",
+    "npoints": "spatial points",
+    "ntime": "hourly samples",
+    "percentile": "fraction"
+  },
+  "records": [
+    {
+      "scenario": "scale",
+      "npoints": 32,
+      "dtype": "float32",
+      "requested_batch_size": null,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 0.46924993866673503,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 1.814799461440729
+    },
+    {
+      "scenario": "scale",
+      "npoints": 128,
+      "dtype": "float32",
+      "requested_batch_size": null,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 0.47663974966659833,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 2.7524731663809066
+    },
+    {
+      "scenario": "scale",
+      "npoints": 512,
+      "dtype": "float32",
+      "requested_batch_size": null,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 0.5907282033334317,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 1.1117781073364763
+    },
+    {
+      "scenario": "scale",
+      "npoints": 2000,
+      "dtype": "float32",
+      "requested_batch_size": null,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 2.234150813000042,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 4.5514729583395495
+    },
+    {
+      "scenario": "scale",
+      "npoints": 8000,
+      "dtype": "float32",
+      "requested_batch_size": null,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 9.685134275000033,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 0.3669534455829621
+    },
+    {
+      "scenario": "scale",
+      "npoints": 22083,
+      "dtype": "float32",
+      "requested_batch_size": null,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 26.928418524000033,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 0.13509075300887696
+    },
+    {
+      "scenario": "batch_size",
+      "npoints": 22083,
+      "dtype": "float32",
+      "requested_batch_size": null,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 26.81904009799996,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 1.5535831270749656
+    },
+    {
+      "scenario": "batch_size",
+      "npoints": 22083,
+      "dtype": "float32",
+      "requested_batch_size": 64,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 139.9783134840001,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 0.39725188361216773
+    },
+    {
+      "scenario": "batch_size",
+      "npoints": 22083,
+      "dtype": "float32",
+      "requested_batch_size": 256,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 38.99889909966669,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 0.10117922721899131
+    },
+    {
+      "scenario": "batch_size",
+      "npoints": 22083,
+      "dtype": "float32",
+      "requested_batch_size": 512,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 21.573393834333427,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 0.12734227242803536
+    },
+    {
+      "scenario": "batch_size",
+      "npoints": 22083,
+      "dtype": "float32",
+      "requested_batch_size": 1024,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 22.634824042666576,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 0.3560839862183697
+    },
+    {
+      "scenario": "batch_size",
+      "npoints": 22083,
+      "dtype": "float32",
+      "requested_batch_size": 2122,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 26.420433486333422,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 0.7823674546834306
+    },
+    {
+      "scenario": "precision",
+      "npoints": 22083,
+      "dtype": "float32",
+      "requested_batch_size": null,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 26.151958648999727,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 0.35960606834081577
+    },
+    {
+      "scenario": "precision",
+      "npoints": 22083,
+      "dtype": "float64",
+      "requested_batch_size": null,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 32.55938104199989,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 0.5015248665752634
+    },
+    {
+      "scenario": "vram_safety",
+      "npoints": 22083,
+      "dtype": "float32",
+      "requested_batch_size": null,
+      "safety_fraction": 0.0,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 25.821811467000014,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 0.5978508031871812
+    },
+    {
+      "scenario": "vram_safety",
+      "npoints": 22083,
+      "dtype": "float32",
+      "requested_batch_size": null,
+      "safety_fraction": 0.15,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 26.05028167433329,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 0.14077010352008093
+    },
+    {
+      "scenario": "vram_safety",
+      "npoints": 22083,
+      "dtype": "float32",
+      "requested_batch_size": null,
+      "safety_fraction": 0.3,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 26.769482582000062,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 0.8019420287094736
+    },
+    {
+      "scenario": "vram_safety",
+      "npoints": 22083,
+      "dtype": "float32",
+      "requested_batch_size": null,
+      "safety_fraction": 0.45,
+      "samples": 3,
+      "pipeline_wall_seconds_mean": 27.88859415299991,
+      "pipeline_wall_seconds_coefficient_of_variation_percent": 0.19137691810107327
+    }
+  ]
+}
