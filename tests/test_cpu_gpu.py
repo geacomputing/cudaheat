@@ -102,7 +102,9 @@ def test_engine_opens_netcdf_then_loads_complete_time_by_spatial_batch(synthetic
 
 
 def test_engine_retries_same_full_time_range_with_smaller_spatial_batch(synthetic_sst, monkeypatch):
-    with CUDAHeat(synthetic_sst, variable="analysed_sst", dtype="float32") as hw:
+    with CUDAHeat(
+        synthetic_sst, variable="analysed_sst", dtype="float32", batch_size=6
+    ) as hw:
         calls = []
 
         def fake_execute(values, start, stop, *_):

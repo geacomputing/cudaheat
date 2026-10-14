@@ -172,6 +172,33 @@ def reduced_batch_size(batch_size: int) -> int:
     return max(1, batch_size // 2)
 
 
+_STRUCTURAL_BATCH_SIZES = (512, 1024, 1536, 2048)
+
+
+def guess_batch_size(estimate: BatchEstimate, *, npoints: int) -> int:
+    """Choose one fixed, chunk-aligned batch size without executing CUDA work.
+
+    Optimized CUDAHeat inputs use 512-point spatial chunks, so the only
+    structural choices are 512, 1024, 1536, and 2048 points.  The safe VRAM
+    ceiling is deliberately divided by four for allocator and workspace
+    headroom, then the nearest permitted candidate is used.  This is an
+    immediate heuristic, not a hardware-specific benchmark; OOM recovery
+    remains authoritative.
+    """
+    if npoints < 1:
+        raise ValueError("npoints must be positive")
+    ceiling = min(estimate.batch_size, npoints)
+    if ceiling < 1:
+        raise ValueError("the VRAM estimate cannot fit one spatial point")
+    target = ceiling / 4
+    candidates = tuple(size for size in _STRUCTURAL_BATCH_SIZES if size <= ceiling)
+    if not candidates:
+        # A constrained GPU can still make progress, but cannot use one of
+        # the standard chunk-aligned sizes.
+        return ceiling
+    return min(candidates, key=lambda size: (abs(size - target), -size))
+
+
 def release_gpu_memory(device_id: int) -> None:
     """Release reusable CuPy allocations after an OOM or completed batch."""
     cp = cupy()

@@ -21,7 +21,7 @@ import h5py
 import numpy as np
 import xarray as xr
 
-from .io import resolve_spatial_dimensions, resolve_time_dim
+from .io import is_optimized_point_layout, resolve_spatial_dimensions, resolve_time_dim
 
 
 DEFAULT_TARGET_CHUNK_BYTES = 4 * 1024 * 1024
@@ -111,6 +111,36 @@ class PreprocessingReport:
         )
 
 
+@dataclass(frozen=True)
+class PreparedNetCDF:
+    """The actual file selected for a CUDAHeat path input.
+
+    ``auto`` preparation never overwrites a researcher's source file.  For an
+    ordinary grid it creates and validates a deterministic sibling cache; for
+    an already compact ``time × point`` file it simply returns the original.
+    """
+
+    source_path: Path
+    active_path: Path
+    was_already_optimized: bool
+    reused_cached_optimization: bool
+    report: PreprocessingReport | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "source_path": str(self.source_path),
+            "active_path": str(self.active_path),
+            "was_already_optimized": self.was_already_optimized,
+            "reused_cached_optimization": self.reused_cached_optimization,
+            "report": None if self.report is None else {
+                "output_chunks": self.report.output_chunks,
+                "retained_points": self.report.retained_points,
+                "removed_points": self.report.removed_points,
+                "elapsed_seconds": self.report.elapsed_seconds,
+            },
+        }
+
+
 def inspect_netcdf(
     input_path: str | Path,
     *,
@@ -148,6 +178,61 @@ def inspect_netcdf(
             source_chunks=source_chunks,
             compression=_source_compression(path, variable, data.encoding),
         )
+
+
+def prepare_netcdf_input(
+    input_path: str | Path,
+    *,
+    variable: str,
+    dtype: str | np.dtype[Any] = "float32",
+    strategy: Literal["auto", "skip", "require"] = "auto",
+    time_dim: str | None = "time",
+) -> PreparedNetCDF:
+    """Return a CUDAHeat-ready NetCDF without ever replacing ``input_path``.
+
+    ``auto`` accepts an existing compact file or creates/reuses
+    ``<stem>.cudaheat<suffix>`` beside an ordinary gridded input.  A cache is
+    reused only when its stored source file identity still matches, preventing
+    an older optimization from being used after the source was replaced.
+    """
+    if strategy not in {"auto", "skip", "require"}:
+        raise ValueError("input_optimization must be 'auto', 'skip', or 'require'")
+    source = Path(input_path)
+    if not source.is_file():
+        raise FileNotFoundError(f"NetCDF input does not exist: {source}")
+    if _is_cudaheat_point_file(source, variable=variable, time_dim=time_dim):
+        return PreparedNetCDF(
+            source, source, was_already_optimized=True, reused_cached_optimization=False
+        )
+    if strategy == "skip":
+        return PreparedNetCDF(
+            source, source, was_already_optimized=False, reused_cached_optimization=False
+        )
+    if strategy == "require":
+        raise ValueError(
+            "input_optimization='require' needs an optimized CUDAHeat time × point NetCDF"
+        )
+
+    destination = _automatic_optimized_path(source)
+    if _cached_optimization_matches(destination, source, variable=variable, time_dim=time_dim):
+        return PreparedNetCDF(
+            source, destination, was_already_optimized=False, reused_cached_optimization=True
+        )
+    report = optimize_netcdf(
+        source,
+        destination,
+        variable=variable,
+        dtype=dtype,
+        time_dim=time_dim,
+        overwrite=destination.exists(),
+    )
+    return PreparedNetCDF(
+        source,
+        destination,
+        was_already_optimized=False,
+        reused_cached_optimization=False,
+        report=report,
+    )
 
 
 def choose_chunk_shape(
@@ -227,6 +312,7 @@ def optimize_netcdf(
     *,
     variable: str,
     dtype: str | np.dtype[Any] = "float32",
+    time_dim: str | None = "time",
     chunking: Literal["auto"] = "auto",
     time_chunk_size: int | None = None,
     point_chunk_size: int | None = None,
@@ -260,7 +346,7 @@ def optimize_netcdf(
     if compression_level < 0 or compression_level > 9:
         raise ValueError("compression_level must be between 0 and 9")
 
-    inspection = inspect_netcdf(source_path, variable=variable)
+    inspection = inspect_netcdf(source_path, variable=variable, time_dim=time_dim)
     nlat, nlon = inspection.grid_shape
     original_points = nlat * nlon
     source_chunks_time_order = _chunks_in_time_order(inspection)
@@ -321,6 +407,7 @@ def optimize_netcdf(
             chunks=(time_chunk, point_chunk),
             compression=resolved_compression,
             compression_level=compression_level,
+            source_path=source_path,
         )
         _validate_output(
             temporary,
@@ -397,6 +484,7 @@ def _write_optimized_file(
     chunks: tuple[int, int],
     compression: str | None,
     compression_level: int,
+    source_path: Path,
 ) -> float:
     ntime = inspection.ntime
     npoints = int(retained_flat.size)
@@ -415,6 +503,11 @@ def _write_optimized_file(
                 "cudaheat_original_latitude_dimension": inspection.latitude_dim,
                 "cudaheat_original_longitude_dimension": inspection.longitude_dim,
                 "cudaheat_chunk_selection": "analytical; benchmarking=none",
+                # These attributes make the automatic sibling cache safe to
+                # reuse while keeping manual preprocessing fully transparent.
+                "cudaheat_source_path": str(source_path.resolve()),
+                "cudaheat_source_size_bytes": int(source_path.stat().st_size),
+                "cudaheat_source_mtime_ns": int(source_path.stat().st_mtime_ns),
             }
         )
         _write_time_coordinate(target, raw, inspection.time_dim)
@@ -565,6 +658,47 @@ def _validate_output(
                 raise RuntimeError(f"validation failed: topology mapping {name!r} is invalid")
         if reopened.attrs.get("cudaheat_preprocessed") != "true":
             raise RuntimeError("validation failed: CUDAHeat preprocessing marker is absent")
+
+
+def _automatic_optimized_path(source: Path) -> Path:
+    """Return the non-destructive sibling filename used by auto preparation."""
+    suffix = source.suffix or ".nc"
+    return source.with_name(f"{source.stem}.cudaheat{suffix}")
+
+
+def _is_cudaheat_point_file(path: Path, *, variable: str, time_dim: str | None) -> bool:
+    """Inspect only metadata to determine whether CUDAHeat can consume a file directly."""
+    with xr.open_dataset(path, decode_cf=False, mask_and_scale=False) as dataset:
+        if variable not in dataset:
+            raise KeyError(f"variable {variable!r} is not present in {path}")
+        data = dataset[variable]
+        return is_optimized_point_layout(data, resolve_time_dim(data, time_dim))
+
+
+def _cached_optimization_matches(
+    cached: Path, source: Path, *, variable: str, time_dim: str | None
+) -> bool:
+    """Return whether a sibling optimization is both valid and from this source revision."""
+    if not cached.is_file():
+        return False
+    try:
+        source_stat = source.stat()
+        with xr.open_dataset(cached, decode_cf=False, mask_and_scale=False) as dataset:
+            if variable not in dataset:
+                return False
+            data = dataset[variable]
+            if not is_optimized_point_layout(data, resolve_time_dim(data, time_dim)):
+                return False
+            attrs = dataset.attrs
+            return (
+                attrs.get("cudaheat_preprocessed") == "true"
+                and attrs.get("cudaheat_source_path") == str(source.resolve())
+                and int(attrs.get("cudaheat_source_size_bytes", -1)) == source_stat.st_size
+                and int(attrs.get("cudaheat_source_mtime_ns", -1)) == source_stat.st_mtime_ns
+            )
+    except (OSError, TypeError, ValueError):
+        # A damaged or legacy sibling cache is simply rebuilt by ``auto``.
+        return False
 
 
 def _source_chunks(data: xr.DataArray) -> tuple[int, ...] | None:

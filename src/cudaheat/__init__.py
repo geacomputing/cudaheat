@@ -2,7 +2,14 @@
 
 from .core import CUDAHeat, BatchOutput, EventDetectionResult, PipelineResult
 from .exceptions import CUDAHeatError, CUDAUnavailableError, InsufficientVRAMError
-from .preprocessing import PreprocessingReport, choose_chunk_shape, inspect_netcdf, optimize_netcdf
+from .preprocessing import (
+    PreparedNetCDF,
+    PreprocessingReport,
+    choose_chunk_shape,
+    inspect_netcdf,
+    optimize_netcdf,
+    prepare_netcdf_input,
+)
 from .validation import ValidationResult, validate_cpu_gpu
 
 __all__ = [
@@ -13,12 +20,14 @@ __all__ = [
     "EventDetectionResult",
     "InsufficientVRAMError",
     "PipelineResult",
+    "PreparedNetCDF",
     "PreprocessingReport",
     "ValidationResult",
     "validate_cpu_gpu",
     "choose_chunk_shape",
     "inspect_netcdf",
     "optimize_netcdf",
+    "prepare_netcdf_input",
 ]
 
 __version__ = "0.1.0"

@@ -19,6 +19,7 @@ for batch in [sweetspot, sweetspot*2, sweetspot*3, sweetspot*4, (sweetspot)+1]:
         PATH,
         variable="analysed_sst",
         timing_logging=False,
+        batch_size=batch,
     ) as hw:
         result = hw.detect(
             baseline=(2019, 2023),
@@ -27,7 +28,6 @@ for batch in [sweetspot, sweetspot*2, sweetspot*3, sweetspot*4, (sweetspot)+1]:
             min_duration_hours=120,
             max_internal_gap_hours=6,
             join_gap_hours=48,
-            batch_size=batch,
         )
         cp.cuda.Device().synchronize()
 

@@ -10,6 +10,7 @@ from cudaheat.preprocessing import (
     choose_chunk_shape,
     inspect_netcdf,
     optimize_netcdf,
+    prepare_netcdf_input,
 )
 from cudaheat.result import EventDetectionResult, EventGrid
 
@@ -171,3 +172,20 @@ def test_cudaheat_consumes_optimized_point_layout(tmp_path):
     assert result.data["mask"].dims == ("time", "point")
     assert "original_flat_index" in result.data.coords
     assert "original_flat_index" in detection.data
+
+
+def test_auto_input_preparation_creates_then_reuses_a_validated_sibling(tmp_path):
+    source = _source_dataset()
+    input_path = tmp_path / "input.nc"
+    source.to_netcdf(input_path, engine="h5netcdf")
+
+    first = prepare_netcdf_input(input_path, variable="sst", dtype="float32")
+    second = prepare_netcdf_input(input_path, variable="sst", dtype="float32")
+
+    assert first.active_path != input_path
+    assert first.active_path.name == "input.cudaheat.nc"
+    assert first.active_path.is_file()
+    assert first.report is not None
+    assert not first.reused_cached_optimization
+    assert second.active_path == first.active_path
+    assert second.reused_cached_optimization

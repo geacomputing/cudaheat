@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 import logging
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import xarray as xr
@@ -30,10 +30,12 @@ from .memory import (
     BatchTelemetry,
     VRAMEstimator,
     cupy,
+    guess_batch_size,
     get_gpu_info,
     reduced_batch_size,
     release_gpu_memory,
 )
+from .preprocessing import PreparedNetCDF, prepare_netcdf_input
 from .result import EventDetectionResult, EventGrid
 from .timing import log_elapsed_time
 
@@ -113,6 +115,17 @@ class CUDAHeat:
         Print per-batch disk-I/O and host-to-GPU transfer timing records.
         Defaults to ``True`` for backwards compatibility. Disable it for
         quiet production runs; telemetry is still collected in the result.
+    batch_size:
+        An explicit positive spatial batch size, or ``"guess"`` (default).
+        The guess selects the closest of 512, 1024, 1536, or 2048 to one
+        quarter of the safe VRAM ceiling. It is immediate: no trial CUDA
+        work, calibration, or performance-cache file is created.
+    input_optimization:
+        For NetCDF paths, ``"auto"`` (default) uses an existing CUDAHeat
+        ``time × point`` file or creates a validated sibling cache for a grid.
+        ``"skip"`` retains the historical direct-input behaviour and
+        ``"require"`` rejects an unoptimized grid. Dataset inputs are never
+        written or replaced.
     """
 
     _RETURNABLE_FIELDS = frozenset(
@@ -142,6 +155,8 @@ class CUDAHeat:
         lazy_spatial_chunk: int = 256,
         calendar_mode: str = CALENDAR_MODE_MONTH_DAY_HOUR,
         timing_logging: bool = True,
+        batch_size: int | Literal["guess"] = "guess",
+        input_optimization: Literal["auto", "skip", "require"] = "auto",
     ) -> None:
         self.dtype = np.dtype(dtype)
         if self.dtype not in (np.dtype("float32"), np.dtype("float64")):
@@ -157,12 +172,32 @@ class CUDAHeat:
         self.lazy_spatial_chunk = int(lazy_spatial_chunk)
         self.calendar_mode = str(calendar_mode)
         self.timing_logging = bool(timing_logging)
-        self.source_path = str(source) if not isinstance(source, xr.Dataset) else None
+        if batch_size != "guess" and (
+            not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1
+        ):
+            raise ValueError("batch_size must be a positive integer or 'guess'")
+        if input_optimization not in {"auto", "skip", "require"}:
+            raise ValueError("input_optimization must be 'auto', 'skip', or 'require'")
+        self.requested_batch_size = batch_size
+        self.input_optimization = input_optimization
+        self.original_source_path = str(source) if not isinstance(source, xr.Dataset) else None
+        self.input_preparation: PreparedNetCDF | None = None
+        self.source_path = self.original_source_path
         self._owns_dataset = not isinstance(source, xr.Dataset)
         self._reader: NetCDFReader | None = None
         if self._owns_dataset:
-            self._reader = NetCDFReader(
+            # Preparation occurs before Xarray opens the active input, so an
+            # ordinary grid can safely become a separate compact cache file.
+            self.input_preparation = prepare_netcdf_input(
                 source,
+                variable=variable,
+                dtype=self.dtype,
+                strategy=self.input_optimization,
+                time_dim=time_dim,
+            )
+            self.source_path = str(self.input_preparation.active_path)
+            self._reader = NetCDFReader(
+                self.input_preparation.active_path,
                 variable=variable,
                 lazy=self.lazy,
                 time_dim=time_dim,
@@ -234,9 +269,10 @@ class CUDAHeat:
         if self.batch_estimate.batch_size < 1:
             self.close()
             raise InsufficientVRAMError(self._single_series_message(self.batch_estimate))
-        self.batch_size = self.batch_estimate.batch_size
+        self.batch_size = self._resolve_configured_batch_size()
         self.last_result: PipelineResult | None = None
         self.last_detection_result: EventDetectionResult | None = None
+        self._print_input_preparation()
         logger.info(
             "CUDAHeat selected GPU %s (%s); free %.2f GiB / total %.2f GiB; "
             "dtype=%s; initial spatial batch=%d; %.2f MiB/point estimate",
@@ -248,6 +284,7 @@ class CUDAHeat:
             self.batch_size,
             self.batch_estimate.bytes_per_point / 2**20,
         )
+        self._print_batch_choice()
         if len(self.devices) > 1:
             logger.info(
                 "Selected devices %s; batches currently execute sequentially on device %d",
@@ -312,6 +349,47 @@ class CUDAHeat:
             "the scientific memory model only after measurement."
         )
 
+    def _resolve_configured_batch_size(self) -> int:
+        """Resolve the engine-level explicit size or immediate structural guess."""
+        if self.requested_batch_size == "guess":
+            return guess_batch_size(self.batch_estimate, npoints=self.npoints)
+        return min(int(self.requested_batch_size), self.npoints)
+
+    def _print_batch_choice(self) -> None:
+        """Report the immediate batch decision without running calibration work."""
+        if not self.timing_logging:
+            return
+        print(
+            "[CUDAHeat batch] "
+            f"mode={self.requested_batch_size} safe_ceiling={self.batch_estimate.batch_size} "
+            f"selected={self.batch_size}",
+            flush=True,
+        )
+
+    def _print_input_preparation(self) -> None:
+        """Report the non-destructive input decision before CUDA execution begins."""
+        if not self.timing_logging or self.input_preparation is None:
+            return
+        prepared = self.input_preparation
+        if prepared.was_already_optimized:
+            finding = "already_optimized"
+        elif prepared.reused_cached_optimization:
+            finding = "reused_optimized_cache"
+        else:
+            finding = "optimized_new_input"
+        report = prepared.report
+        details = ""
+        if report is not None:
+            details = (
+                f" chunks={report.output_chunks} retained_points={report.retained_points} "
+                f"removed_points={report.removed_points} elapsed={report.elapsed_seconds:.2f}s"
+            )
+        print(
+            "[CUDAHeat input] "
+            f"{finding} | source={prepared.source_path} active={prepared.active_path}{details}",
+            flush=True,
+        )
+
     def _load_spatial_batch(
         self, point_start: int, point_stop: int, dtype: str | np.dtype[Any] | None = None
     ) -> np.ndarray:
@@ -366,7 +444,6 @@ class CUDAHeat:
         smooth_min_periods: int | None = None,
         return_fields: Iterable[str] = (),
         on_batch: Callable[[BatchOutput], None] | None = None,
-        batch_size: int | None = None,
     ) -> PipelineResult:
         """Run the first-milestone GPU pipeline over all spatial batches.
 
@@ -389,11 +466,7 @@ class CUDAHeat:
         exceedance_count = np.zeros(self.npoints, dtype=np.uint64)
         telemetry: list[BatchTelemetry] = []
         point_start = 0
-        if batch_size is not None and batch_size < 1:
-            raise ValueError("batch_size must be positive")
-        active_batch_size = (
-            min(batch_size, self.npoints) if batch_size is not None else self.batch_size
-        )
+        active_batch_size = self.batch_size
 
         while point_start < self.npoints:
             current_size = min(active_batch_size, self.npoints - point_start)
@@ -493,7 +566,14 @@ class CUDAHeat:
                 "vram_safety": self.vram_safety,
                 "initial_batch_estimate": self.batch_estimate.as_dict(),
                 "devices": self.devices,
-                "requested_batch_size": batch_size,
+                "requested_batch_size": self.requested_batch_size,
+                "batch_size": self.batch_size,
+                "batch_selection": "guess" if self.requested_batch_size == "guess" else "explicit",
+                "source_path": self.source_path,
+                "original_source_path": self.original_source_path,
+                "input_preparation": (
+                    None if self.input_preparation is None else self.input_preparation.as_dict()
+                ),
                 "result_dataset_assembly_seconds": final_assembly_seconds,
             },
         )
@@ -537,7 +617,6 @@ class CUDAHeat:
         min_duration_hours: int = 1,
         max_internal_gap_hours: int = 0,
         join_gap_hours: int = 0,
-        batch_size: int | None = None,
     ) -> EventDetectionResult:
         """Detect vectorized threshold-exceedance events on the GPU.
 
@@ -559,9 +638,6 @@ class CUDAHeat:
             raise TypeError("join_gap_hours must be an integer")
         if join_gap_hours < 0:
             raise ValueError("join_gap_hours must be non-negative")
-        if batch_size is not None and batch_size < 1:
-            raise ValueError("batch_size must be positive")
-
         smooth_window_hours = self._resolve_smooth_window_hours(smooth_window_hours)
         rows = baseline_rows(self._time, baseline)
         climatology_nbins = self._climatology_nbins(rows)
@@ -571,9 +647,7 @@ class CUDAHeat:
         event_parts: list[EventRuns] = []
         telemetry: list[BatchTelemetry] = []
         point_start = 0
-        active_batch_size = (
-            min(batch_size, self.npoints) if batch_size is not None else self.batch_size
-        )
+        active_batch_size = self.batch_size
 
         while point_start < self.npoints:
             current_size = min(active_batch_size, self.npoints - point_start)
@@ -655,7 +729,6 @@ class CUDAHeat:
             telemetry=tuple(telemetry),
             metadata={
                 "variable": self.variable,
-                "source_path": self.source_path,
                 "dtype": self.dtype.name,
                 "time_dimension": self.time_dim,
                 "spatial_dimensions": self.spatial_dims,
@@ -675,6 +748,14 @@ class CUDAHeat:
                     "contiguous_runs",
                     "minimum_duration",
                     "join_candidate_runs",
+                ),
+                "requested_batch_size": self.requested_batch_size,
+                "batch_size": self.batch_size,
+                "batch_selection": "guess" if self.requested_batch_size == "guess" else "explicit",
+                "source_path": self.source_path,
+                "original_source_path": self.original_source_path,
+                "input_preparation": (
+                    None if self.input_preparation is None else self.input_preparation.as_dict()
                 ),
                 "result_dataset_assembly_seconds": perf_counter() - final_assembly_start,
             },

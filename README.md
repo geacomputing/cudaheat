@@ -47,6 +47,33 @@ with CUDAHeat("sst.nc", variable="analysed_sst", dtype="float32", vram_safety=0.
     mask = hw.mask(baseline=(1982, 2011))
 ```
 
+### Input and batch selection
+
+For a NetCDF path, CUDAHeat now uses `input_optimization="auto"` by default.
+It accepts an existing CUDAHeat `(time, point)` file unchanged; otherwise it
+writes and validates a sibling such as `sst.cudaheat.nc`, never overwriting the
+source file. The run metadata records both paths and the preparation result.
+
+`batch_size="guess"` is the default. It immediately chooses the closest of
+`512`, `1024`, `1536`, or `2048` to one quarter of the VRAM-safe ceiling.
+Those values are multiples of CUDAHeat's standard 512-point optimized input
+chunk. It does not benchmark, run trial CUDA work, or create a batch-size
+cache. Set `batch_size` once on `CUDAHeat`; both `run()` and `detect()` use
+that same engine-level value.
+
+```python
+# Default: optimize a path if needed, then make one immediate structural guess.
+with CUDAHeat("sst.nc", variable="analysed_sst", batch_size="guess") as hw:
+    result = hw.run(baseline=(1982, 2011))
+
+# Fully reproducible explicit size.
+with CUDAHeat("sst.nc", variable="analysed_sst", batch_size=512) as hw:
+    result = hw.run(baseline=(1982, 2011))
+```
+
+Use `input_optimization="skip"` to retain direct grid input or
+`input_optimization="require"` to reject an unoptimized file.
+
 `run()` returns compact per-point exceedance counts by default. For production-size outputs, request fields with `return_fields` and use `on_batch` to persist every spatial batch without retaining all `(time, point)` values in CPU RAM.
 
 `detect()` retains only a compact sparse event catalogue. `to_xarray()` and
@@ -102,6 +129,9 @@ benchmark = CUDAHeatBenchmark(hw)
 benchmark.run(repeats=3, warmup=1, point_counts=[100, 1000], gpu_dtypes=["float32"])
 benchmark.export_json("benchmark-results/run.json")
 ```
+
+When `batch_sizes` is omitted, a benchmark uses the engine's configured
+`batch_size`. Pass `batch_sizes=[512, 1024]` to benchmark explicit sizes.
 
 Benchmarks retain real repeat measurements only. They separately report CPU
 compute, host-to-device transfer, CUDA-event GPU compute, device-to-host

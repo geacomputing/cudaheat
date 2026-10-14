@@ -69,7 +69,9 @@ class CUDAHeatBenchmark:
         for point_count in point_counts:
             cpu_measurements: list[float] | None = None
             if measure_cpu and reuse_cpu_reference:
-                with self._engine_for_configuration(point_count, gpu_dtypes[0]) as cpu_engine:
+                with self._engine_for_configuration(
+                    point_count, gpu_dtypes[0], batch_size=self.engine.requested_batch_size
+                ) as cpu_engine:
                     for _ in range(warmup):
                         self._run_cpu(cpu_engine, cpu_dtype_value, cpu_reference, pipeline_kwargs)
                     cpu_measurements = [
@@ -78,13 +80,20 @@ class CUDAHeatBenchmark:
                     ]
             for gpu_dtype in gpu_dtypes:
                 for requested_batch_size in batch_sizes:
-                    with self._engine_for_configuration(point_count, gpu_dtype) as configured:
+                    configured_batch_size = (
+                        self.engine.requested_batch_size
+                        if requested_batch_size is None
+                        else requested_batch_size
+                    )
+                    with self._engine_for_configuration(
+                        point_count, gpu_dtype, batch_size=configured_batch_size
+                    ) as configured:
                         for _ in range(warmup):
                             if measure_cpu and not reuse_cpu_reference:
                                 self._run_cpu(
                                     configured, cpu_dtype_value, cpu_reference, pipeline_kwargs
                                 )
-                            configured.run(batch_size=requested_batch_size, **pipeline_kwargs)
+                            configured.run(**pipeline_kwargs)
                         for repeat in range(repeats):
                             cpu_seconds = None
                             if measure_cpu:
@@ -97,9 +106,7 @@ class CUDAHeatBenchmark:
                                 )
                             try:
                                 pipeline_start = perf_counter()
-                                result = configured.run(
-                                    batch_size=requested_batch_size, **pipeline_kwargs
-                                )
+                                result = configured.run(**pipeline_kwargs)
                                 pipeline_wall_seconds = perf_counter() - pipeline_start
                             except CUDAHeatError as exc:
                                 record = self._failed_record(
@@ -126,7 +133,9 @@ class CUDAHeatBenchmark:
                             new_records.append(record)
         return new_records
 
-    def _engine_for_configuration(self, point_count: int, gpu_dtype: str) -> CUDAHeat:
+    def _engine_for_configuration(
+        self, point_count: int, gpu_dtype: str, *, batch_size: int | str
+    ) -> CUDAHeat:
         if self.engine._dataset is None:
             raise RuntimeError("the benchmark source engine is closed")
         indices = self.engine.point_indices[:point_count]
@@ -144,6 +153,7 @@ class CUDAHeatBenchmark:
             point_indices=point_selection,
             calendar_mode=self.engine.calendar_mode,
             timing_logging=self.engine.timing_logging,
+            batch_size=batch_size,
         )
 
     @staticmethod

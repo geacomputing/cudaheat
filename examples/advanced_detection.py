@@ -34,7 +34,11 @@ if False:
 t0 = time.perf_counter()
 
 final= "/home/user/Documents/Gea/cudaheat/examples/sst_cudaheat.nc"
-with CUDAHeat(final, variable="analysed_sst", timing_logging=False) as hw:
+with CUDAHeat(final,
+              variable="analysed_sst",
+              timing_logging=False,
+              input_optimization="skip",
+              batch_size=512) as hw:
     result = hw.detect(
         baseline=(2019, 2023),
         percentile=.90,
@@ -42,13 +46,14 @@ with CUDAHeat(final, variable="analysed_sst", timing_logging=False) as hw:
         min_duration_hours=120,
         max_internal_gap_hours=6, 
         join_gap_hours=48, 
-        batch_size=512,
     )
 
 
 cp.cuda.Stream.null.synchronize()
 elapsed = time.perf_counter() - t0
 print()
-print(f"Execution time: {elapsed:.3f} s")
+print(f"Execution time    : {elapsed:.3f} s")
+print(f"Used batch Size   : {hw.batch_size}  [requested batch size: {hw.requested_batch_size}]")
+print(f"VRAM Safety Margin: {hw.vram_safety}")
 print()
 print()
