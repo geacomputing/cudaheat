@@ -192,6 +192,8 @@ class CUDAHeatBenchmark:
                 climatology_nbins,
                 smooth_min_periods,
                 engine.calendar_mode,
+                5,
+                True,
             )
             seconds += perf_counter() - start
             del fields

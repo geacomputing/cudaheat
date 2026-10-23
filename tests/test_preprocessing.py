@@ -155,6 +155,10 @@ def test_cudaheat_consumes_optimized_point_layout(tmp_path):
     cp = pytest.importorskip("cupy")
     if cp.cuda.runtime.getDeviceCount() < 1:
         pytest.skip("CUDA device unavailable")
+    try:
+        cp.full((1,), 0.0)
+    except RuntimeError as exc:
+        pytest.skip(f"CuPy kernel compilation unavailable: {exc}")
     from cudaheat import CUDAHeat
 
     source = _source_dataset()
@@ -166,8 +170,8 @@ def test_cudaheat_consumes_optimized_point_layout(tmp_path):
     with CUDAHeat(output_path, variable="sst", vram_safety=0.90) as engine:
         assert engine._optimized_point_layout
         assert engine.npoints == 5
-        result = engine.run(smooth_window_hours=3, return_fields={"mask"})
-        detection = engine.detect(smooth_window_hours=3)
+        result = engine.run(smooth_window_hours=24 * 3, return_fields={"mask"})
+        detection = engine.detect(smooth_window_hours=24 * 3)
 
     assert result.data["mask"].dims == ("time", "point")
     assert "original_flat_index" in result.data.coords

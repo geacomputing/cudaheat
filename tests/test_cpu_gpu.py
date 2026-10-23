@@ -6,6 +6,10 @@ import pytest
 cp = pytest.importorskip("cupy")
 if cp.cuda.runtime.getDeviceCount() < 1:  # pragma: no cover - hardware dependent
     pytest.skip("CUDA device unavailable", allow_module_level=True)
+try:  # pragma: no cover - installation dependent
+    cp.full((1,), 0.0)
+except RuntimeError as exc:  # CuPy can see a GPU without its NVRTC headers.
+    pytest.skip(f"CuPy kernel compilation unavailable: {exc}", allow_module_level=True)
 
 from cudaheat.climatology import (
     CALENDAR_MODE_DAY_OF_YEAR,
@@ -26,8 +30,10 @@ def test_gpu_matches_cpu_reference_with_nan_and_float32(synthetic_sst):
     values = synthetic_sst.analysed_sst.stack(point=("lat", "lon")).values.astype("float32")
     bins = hourly_climatology_index(synthetic_sst.time)
     rows = np.arange(values.shape[0])
-    cpu = cpu_pre_event_fields(values, bins, rows, smooth_window_hours=3)
-    gpu = gpu_pre_event_fields(cp.asarray(values), cp.asarray(bins), cp.asarray(rows), smooth_window_hours=3)
+    cpu = cpu_pre_event_fields(values, bins, rows, smooth_window_hours=3,
+                               sampling_window_half_width_days=0, smooth_same_hour=False)
+    gpu = gpu_pre_event_fields(cp.asarray(values), cp.asarray(bins), cp.asarray(rows), smooth_window_hours=3,
+                               sampling_window_half_width_days=0, smooth_same_hour=False)
 
     np.testing.assert_allclose(cp.asnumpy(gpu.climatology), cpu.climatology, rtol=2e-5, atol=2e-5, equal_nan=True)
     np.testing.assert_allclose(cp.asnumpy(gpu.threshold), cpu.threshold, rtol=2e-5, atol=2e-5, equal_nan=True)
@@ -69,12 +75,34 @@ def test_engine_stacks_space_preserves_all_time_and_returns_mask(synthetic_sst):
         assert batch.shape == (hw.ntime, 2)
         assert batch.dtype == np.float32
 
-        result = hw.run(smooth_window_hours=3, return_fields={"mask", "threshold_raw"})
+        result = hw.run(smooth_window_hours=24 * 3, return_fields={"mask", "threshold_raw"})
         assert result.metadata["time_was_split"] is False
         assert result.data["mask"].dims == ("time", "lat", "lon")
         assert result.data["mask"].dtype == bool
         assert result.data["threshold_raw"].dims == ("climatology_hour", "lat", "lon")
         assert len(result.telemetry) >= 1
+
+
+def test_detection_can_retain_smoothed_cycles(synthetic_sst):
+    with CUDAHeat(synthetic_sst, variable="analysed_sst", dtype="float32") as hw:
+        reference = hw.run(
+            smooth_window_hours=24 * 3,
+            return_fields={"climatology", "threshold_cycle"},
+        )
+        result = hw.detect(
+            smooth_window_hours=24 * 3,
+            retain_fields={"climatology", "threshold_cycle"},
+        )
+
+    assert set(result.retained_fields.data_vars) == {"climatology", "threshold_cycle"}
+    assert result.metadata["retained_fields"] == ("climatology", "threshold_cycle")
+    for name in result.retained_fields.data_vars:
+        expected = reference.data[name].stack(point=("lat", "lon")).transpose(
+            "climatology_hour", "point"
+        )
+        np.testing.assert_allclose(
+            result.retained_fields[name].values, expected.values, equal_nan=True
+        )
 
 
 def test_engine_dayofyear_mode_uses_hourwave_bins_and_metadata(synthetic_sst):
@@ -84,12 +112,12 @@ def test_engine_dayofyear_mode_uses_hourwave_bins_and_metadata(synthetic_sst):
         dtype="float32",
         calendar_mode=CALENDAR_MODE_DAY_OF_YEAR,
     ) as hw:
-        assert hw._resolve_smooth_window_hours(None) == 15 * 24
-        result = hw.run(smooth_window_hours=3, return_fields={"climatology", "threshold"})
+        assert hw._resolve_smooth_window_hours(None) == 31 * 24
+        result = hw.run(smooth_window_hours=24 * 3, return_fields={"climatology", "threshold"})
 
     assert result.data["climatology"].sizes["climatology_hour"] == synthetic_sst.sizes["time"]
     assert result.metadata["calendar_mode"] == CALENDAR_MODE_DAY_OF_YEAR
-    assert result.metadata["smooth_min_periods"] == 3
+    assert result.metadata["smooth_min_periods"] == 1
 
 
 def test_engine_opens_netcdf_then_loads_complete_time_by_spatial_batch(synthetic_sst, tmp_path):
@@ -139,7 +167,7 @@ def test_targeted_validation_selection_is_seeded_and_keeps_complete_time(synthet
     with CUDAHeat(synthetic_sst, variable="analysed_sst") as hw:
         first = select_validation_points(hw, points=3, random_seed=17)
         second = select_validation_points(hw, points=3, random_seed=17)
-        result = hw.validate(points=3, random_seed=17, smooth_window_hours=3)
+        result = hw.validate(points=3, random_seed=17, smooth_window_hours=24 * 3)
 
     np.testing.assert_array_equal(first, second)
     assert result.ntime == synthetic_sst.sizes["time"]
@@ -156,7 +184,7 @@ def test_benchmark_runs_repeats_with_complete_time_series(synthetic_sst):
             warmup=0,
             point_counts=(2,),
             batch_sizes=(1,),
-            smooth_window_hours=3,
+            smooth_window_hours=24 * 3,
         )
 
     assert len(records) == 2

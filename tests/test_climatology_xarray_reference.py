@@ -122,6 +122,8 @@ def test_dayofyear_cpu_matches_hourwave_xarray_with_leap_and_missing_values(dtyp
         nbins=nbins,
         smooth_min_periods=24,
         calendar_mode=CALENDAR_MODE_DAY_OF_YEAR,
+        sampling_window_half_width_days=0,
+        smooth_same_hour=False,
     )
     reference = _hourwave_reference(
         values,
@@ -156,6 +158,8 @@ def test_dayofyear_nonleap_baseline_marks_unavailable_leap_day_nan():
         nbins=nbins,
         smooth_min_periods=24,
         calendar_mode=CALENDAR_MODE_DAY_OF_YEAR,
+        sampling_window_half_width_days=0,
+        smooth_same_hour=False,
     )
     reference = _hourwave_reference(
         values,
@@ -187,6 +191,8 @@ def test_irregular_baseline_coverage_matches_xarray_reference():
         nbins=nbins,
         smooth_min_periods=24,
         calendar_mode=CALENDAR_MODE_DAY_OF_YEAR,
+        sampling_window_half_width_days=0,
+        smooth_same_hour=False,
     )
     reference = _hourwave_reference(
         values,
@@ -238,6 +244,10 @@ def test_gpu_matches_independent_xarray_reference_for_hourwave_calendar(dtype):
     cp = pytest.importorskip("cupy")
     if cp.cuda.runtime.getDeviceCount() < 1:
         pytest.skip("CUDA device unavailable")
+    try:
+        cp.full((1,), 0.0)
+    except RuntimeError as exc:
+        pytest.skip(f"CuPy kernel compilation unavailable: {exc}")
     from cudaheat.climatology import gpu_pre_event_fields
 
     time, values = _hourly_values("2019-01-01", "2021-01-01", dtype)
@@ -254,6 +264,8 @@ def test_gpu_matches_independent_xarray_reference_for_hourwave_calendar(dtype):
         nbins=nbins,
         smooth_min_periods=24,
         calendar_mode=CALENDAR_MODE_DAY_OF_YEAR,
+        sampling_window_half_width_days=0,
+        smooth_same_hour=False,
     )
     reference = _hourwave_reference(
         values,

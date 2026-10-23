@@ -37,21 +37,22 @@ if False:
 if True:
     t0 = time.perf_counter()
 
-    #final= "/home/user/Documents/Gea/cudaheat/examples/sst_cudaheat.nc"
-    final = "/home/user/Documents/Gea/cudaheat/benchmarks/extend_NETCDF_create40_years_timespan/sst_40yrs_optimzed.nc"
+    final= "/home/user/Documents/Gea/cudaheat/examples/sst_cudaheat.nc"
+    #final = "/home/user/Documents/Gea/cudaheat/benchmarks/extend_NETCDF_create40_years_timespan/sst_40yrs_optimzed.nc"
 
     with CUDAHeat(final,
                 variable="analysed_sst",
-                timing_logging=True,
+                timing_logging=False,
                 input_optimization="auto",
                 batch_size="guess") as hw:
         result = hw.detect(
-            baseline=(2019, 2030),
-            percentile=.90,
-            smooth_window_hours=24*7,
+            baseline=(2019, 2023),
+            percentile=.9,
+            #smooth_window_hours=24*10,
             min_duration_hours=120,
-            max_internal_gap_hours=6, 
-            join_gap_hours=48, 
+            max_internal_gap_hours=0, 
+            join_gap_hours=0, 
+            retain_fields={"climatology", "threshold_cycle"}
         )
 
 
@@ -63,3 +64,17 @@ if True:
     print(f"VRAM Safety Margin: {hw.vram_safety}")
     print()
     print()
+
+
+
+
+    for pts in [2000, 4000, 6000, 8000, 10000, 12000, 13000, 14000, 15000, 16000, 17000, 18000, 22000]:
+    
+        series = result.event_timeseries(event_id=pts, pad_hours=0)
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        series.climatology.plot(ax=ax, label="climatology")
+        series.sst.plot(ax=ax, label="sst")
+        series.threshold.plot(ax=ax, label="threshold")
+        plt.legend()
+        plt.plot()

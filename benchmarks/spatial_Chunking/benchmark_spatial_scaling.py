@@ -42,8 +42,11 @@ DATASET_DIRECTORY = OUTPUT_DIRECTORY / "datasets"
 
 VARIABLE = "analysed_sst"
 RANDOM_SEED = 20261014
-REPETITIONS = 1
+REPETITIONS = 3
 RUN_WARMUP = True
+# False regenerates figures from results.json only. Set True to prepare/reuse
+# data sets and collect a fresh benchmark campaign.
+RUN_BENCHMARK = False
 
 POINT_COUNTS = (2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000)
 #POINT_COUNTS = (2000, 4000)
@@ -64,6 +67,9 @@ JOIN_GAP_HOURS = 48
 def main() -> None:
     OUTPUT_DIRECTORY.mkdir(parents=True, exist_ok=True)
     DATASET_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    if not RUN_BENCHMARK:
+        regenerate_figures()
+        return
 
     original = inspect_file(ORIGINAL_GRID_SOURCE)
     source = inspect_file(OPTIMIZED_POINT_SOURCE)
@@ -128,6 +134,20 @@ def main() -> None:
     write_results(source, selected_counts, preparation, executions, summaries)
     make_figures(executions, summaries)
     print(f"Spatial-scaling artifacts written to {OUTPUT_DIRECTORY}")
+
+
+def regenerate_figures() -> None:
+    """Regenerate plots after visual changes without repeating GPU work."""
+    results_path = OUTPUT_DIRECTORY / "results.json"
+    if not results_path.is_file():
+        raise FileNotFoundError(
+            f"{results_path} is required when RUN_BENCHMARK is False; "
+            "set RUN_BENCHMARK = True first."
+        )
+    with results_path.open(encoding="utf-8") as handle:
+        results = json.load(handle)
+    make_figures(results["executions"], results["summaries"])
+    print(f"Figures regenerated from {results_path}")
 
 
 def inspect_file(path: Path) -> dict[str, Any]:
@@ -391,8 +411,8 @@ def run_cudaheat(path: Path) -> dict[str, Any]:
     with CUDAHeat(
         path,
         variable=VARIABLE,
-        timing_logging=True,
-        input_optimization="auto",
+        timing_logging=False,
+        input_optimization="skip",
         batch_size="guess",
     ) as hw:
         result = hw.detect(
@@ -539,14 +559,23 @@ def make_figures(executions: list[dict[str, Any]], summaries: list[dict[str, Any
     plt.close(figure)
 
     figure, axis = plt.subplots(figsize=(8, 5))
-    for metric, label in (
-        ("host_read_seconds", "Host NetCDF read"),
-        ("transfer_to_device_seconds", "CPU → GPU"),
-        ("gpu_compute_seconds", "GPU compute"),
-        ("transfer_from_device_seconds", "GPU → CPU"),
-    ):
-        axis.plot(x, [row[f"mean_{metric}"] for row in summaries], marker="o", label=label)
-    axis.set(xlabel="Valid ocean points", ylabel="Measured time (s)", title="CUDAHeat pipeline anatomy")
+    components = (
+        ("host_read_seconds", "Host NetCDF read", "tab:blue"),
+        ("transfer_to_device_seconds", "CPU → GPU", "tab:orange"),
+        ("gpu_compute_seconds", "GPU compute", "tab:green"),
+        ("transfer_from_device_seconds", "GPU → CPU", "tab:red"),
+    )
+    bar_width = float(np.min(np.diff(x))) * 0.7 if x.size > 1 else float(x[0]) * 0.7
+    bottom = np.zeros(x.size)
+    for metric, label, color in components:
+        values = np.asarray([row[f"mean_{metric}"] for row in summaries])
+        axis.bar(x, values, width=bar_width, bottom=bottom, label=label, color=color)
+        bottom += values
+    axis.set(
+        xlabel="Valid ocean points",
+        ylabel="Mean measured time (s)",
+        title="CUDAHeat pipeline anatomy",
+    )
     axis.legend()
     figure.tight_layout()
     figure.savefig(OUTPUT_DIRECTORY / "pipeline_anatomy.png", dpi=180)

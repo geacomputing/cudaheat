@@ -10,6 +10,10 @@ import cudaheat.core as core
 cp = pytest.importorskip("cupy")
 if cp.cuda.runtime.getDeviceCount() < 1:  # pragma: no cover - hardware dependent
     pytest.skip("CUDA device unavailable", allow_module_level=True)
+try:  # pragma: no cover - installation dependent
+    cp.full((1,), 0.0)
+except RuntimeError as exc:
+    pytest.skip(f"CuPy kernel compilation unavailable: {exc}", allow_module_level=True)
 
 
 def _event_source() -> tuple[xr.Dataset, int]:

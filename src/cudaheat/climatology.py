@@ -63,6 +63,31 @@ def hourly_climatology_index(
     )
 
 
+def validate_contiguous_hourly_time(time: Any) -> None:
+    """Reject missing or duplicate timestamps before treating rows as hours."""
+    values = np.asarray(time.values)
+    if values.ndim != 1:
+        raise ValueError("time coordinate must be one-dimensional")
+    if values.size < 2:
+        return
+    deltas = np.diff(values)
+    if np.issubdtype(values.dtype, np.datetime64):
+        hourly = deltas == np.timedelta64(1, "h")
+    else:
+        try:
+            hourly = np.asarray(
+                [delta.total_seconds() == 3600 for delta in deltas], dtype=bool
+            )
+        except AttributeError as exc:
+            raise ValueError("time coordinate must contain datetime-like values") from exc
+    if not np.all(hourly):
+        index = int(np.flatnonzero(~hourly)[0])
+        raise ValueError(
+            "CUDAHeat requires a contiguous, strictly hourly time coordinate; "
+            f"timestamps at positions {index} and {index + 1} are not one hour apart"
+        )
+
+
 def climatology_bin_count(
     bins: np.ndarray,
     baseline_indices: np.ndarray,
@@ -158,6 +183,134 @@ def _smooth_cycle(
     return _smooth_circular(array, window, xp, min_periods)
 
 
+def _circular_window_sum(array: Any, window: int, xp: Any) -> Any:
+    """Circular centred running sum along the first axis.
+
+    Unlike :func:`_smooth_circular`, zeros are data here (the numerator or
+    denominator of a weighted mean), so they must not be treated as missing.
+    """
+    if window <= 1:
+        return array
+    if window > array.shape[0]:
+        raise ValueError("window may not exceed the climatological cycle")
+    left = window // 2
+    right = window - left - 1
+    padded = xp.concatenate((array[-left:] if left else array[:0], array, array[:right]), axis=0)
+    accumulation_dtype = xp.float64 if array.dtype.itemsize < 8 else array.dtype
+    zeros = xp.zeros((1, *array.shape[1:]), dtype=accumulation_dtype)
+    cumulative = xp.concatenate(
+        (zeros, xp.cumsum(padded, axis=0, dtype=accumulation_dtype)), axis=0
+    )
+    return cumulative[window:] - cumulative[:-window]
+
+
+def _smooth_same_hour_cycle(
+    array: Any, window_days: int, xp: Any, min_periods: int
+) -> Any:
+    """Smooth calendar days without blending different hours of the day."""
+    if array.shape[0] % 24:
+        raise ValueError("the hourly climatological cycle must contain complete days")
+    days = array.shape[0] // 24
+    if not 1 <= window_days <= days:
+        raise ValueError("smooth_window_hours must be between 24 hours and one calendar cycle")
+    day_hour = array.reshape(days, 24, array.shape[1])
+    compact = _smooth_circular(day_hour.reshape(days, -1), window_days, xp, min_periods)
+    return compact.reshape(array.shape)
+
+
+def _nanmean_by_bin_window(
+    values: Any,
+    bins: Any,
+    nbins: int,
+    half_width_days: int,
+    xp: Any,
+) -> Any:
+    """Mean of same-clock-hour samples in a circular calendar-day window."""
+    if half_width_days == 0:
+        if xp is np:
+            return _nanmean_by_bin_cpu(values, bins, nbins)
+        return _nanmean_by_bin_gpu(values, bins, nbins, xp)
+    if nbins % 24:
+        raise ValueError("nbins must contain complete calendar days")
+    days = nbins // 24
+    valid = ~xp.isnan(values)
+    sums = xp.zeros((nbins, values.shape[1]), dtype=values.dtype)
+    counts = xp.zeros((nbins, values.shape[1]), dtype=values.dtype)
+    xp.add.at(sums, bins, xp.where(valid, values, 0))
+    xp.add.at(counts, bins, valid.astype(values.dtype))
+    width = 2 * half_width_days + 1
+    sums = _circular_window_sum(sums.reshape(days, 24, values.shape[1]), width, xp)
+    counts = _circular_window_sum(counts.reshape(days, 24, values.shape[1]), width, xp)
+    return xp.where(counts > 0, sums / xp.where(counts > 0, counts, 1), xp.nan).reshape(
+        nbins, values.shape[1]
+    )
+
+
+def _nanpercentile_by_bin_window_cpu(
+    values: np.ndarray,
+    bins: np.ndarray,
+    nbins: int,
+    percentile: float,
+    half_width_days: int,
+) -> np.ndarray:
+    """Reference percentile over an 11-day, same-hour calendar window."""
+    if half_width_days == 0:
+        return _nanpercentile_by_bin_cpu(values, bins, nbins, percentile)
+    days = nbins // 24
+    source_days = bins // 24
+    source_hours = bins % 24
+    result = np.full((nbins, values.shape[1]), np.nan, dtype=values.dtype)
+    offsets = np.arange(-half_width_days, half_width_days + 1)
+    for day in range(days):
+        in_window = np.isin(source_days, (day + offsets) % days)
+        result[day * 24 : (day + 1) * 24] = _nanpercentile_by_bin_cpu(
+            values[in_window], source_hours[in_window], 24, percentile
+        )
+    return result
+
+
+def _nanpercentile_by_bin_window_gpu(
+    values: Any,
+    bins: Any,
+    nbins: int,
+    percentile: float,
+    half_width_days: int,
+    cp: Any,
+) -> Any:
+    """GPU percentile over a calendar-day window, preserving clock hour."""
+    if half_width_days == 0:
+        return _nanpercentile_by_bin_gpu(values, bins, nbins, percentile, cp)
+    days = nbins // 24
+    source_days = bins // 24
+    source_hours = bins % 24
+    result = cp.full((nbins, values.shape[1]), cp.nan, dtype=values.dtype)
+    offsets = cp.arange(-half_width_days, half_width_days + 1, dtype=source_days.dtype)
+    for day in range(days):
+        day_bins = (day + offsets) % days
+        in_window = cp.any(source_days[:, None] == day_bins[None, :], axis=1)
+        result[day * 24 : (day + 1) * 24] = _nanpercentile_by_bin_gpu(
+            values[in_window], source_hours[in_window], 24, percentile, cp
+        )
+    return result
+
+
+def _interpolate_february_29(array: Any, xp: Any) -> Any:
+    """Use the Hobday convention: interpolate Feb 29 from Feb 28 and Mar 1."""
+    if array.shape[0] != HOURS_PER_LEAP_YEAR:
+        return array
+    output = array.copy()
+    before = output[58 * 24 : 59 * 24]
+    after = output[60 * 24 : 61 * 24]
+    valid_before = ~xp.isnan(before)
+    valid_after = ~xp.isnan(after)
+    count = valid_before.astype(array.dtype) + valid_after.astype(array.dtype)
+    total = xp.where(valid_before, before, 0) + xp.where(valid_after, after, 0)
+    output[59 * 24 : 60 * 24] = xp.where(
+        count > 0, total / xp.where(count > 0, count, 1), xp.nan
+    )
+    return output
+
+
 def smooth_circular_cpu(array: np.ndarray, window: int, min_periods: int = 1) -> np.ndarray:
     """CPU reference for circular climatology smoothing."""
     return _smooth_circular(array, window, np, min_periods)
@@ -217,36 +370,61 @@ def cpu_pre_event_fields(
     bins: np.ndarray,
     baseline_indices: np.ndarray,
     percentile: float = 0.90,
-    smooth_window_hours: int = 120,
+    smooth_window_hours: int = 31 * 24,
     nbins: int = HOURS_PER_LEAP_YEAR,
     smooth_min_periods: int = 1,
     calendar_mode: str = CALENDAR_MODE_MONTH_DAY_HOUR,
+    sampling_window_half_width_days: int = 5,
+    smooth_same_hour: bool = True,
 ) -> PreEventFields:
-    """NumPy reference implementation for validation and small CPU workloads."""
+    """NumPy reference implementation of the hourly Hobday climatology.
+
+    The default pools the same clock hour from calendar days ±5 and smooths
+    each clock-hour cycle across 31 days.  The two final keyword arguments
+    retain the prior exact-bin/consecutive-hour mode for historical results.
+    """
     _validate_inputs(
         values, bins, baseline_indices, percentile, smooth_window_hours, smooth_min_periods, nbins
     )
     _validate_calendar_mode(calendar_mode)
     reference = values[baseline_indices]
     reference_bins = bins[baseline_indices]
-    climatology_raw = _nanmean_by_bin_cpu(reference, reference_bins, nbins)
-    climatology = _smooth_cycle(
-        climatology_raw,
-        reference_bins,
-        smooth_window_hours,
-        np,
-        smooth_min_periods,
-        calendar_mode,
+    _validate_sampling_window(sampling_window_half_width_days)
+    climatology_raw = _nanmean_by_bin_window(
+        reference, reference_bins, nbins, sampling_window_half_width_days, np
     )
-    threshold_raw = _nanpercentile_by_bin_cpu(reference, reference_bins, nbins, percentile)
-    threshold_cycle = _smooth_cycle(
-        threshold_raw,
-        reference_bins,
-        smooth_window_hours,
-        np,
-        smooth_min_periods,
-        calendar_mode,
+    threshold_raw = _nanpercentile_by_bin_window_cpu(
+        reference, reference_bins, nbins, percentile, sampling_window_half_width_days
     )
+    if sampling_window_half_width_days and calendar_mode == CALENDAR_MODE_MONTH_DAY_HOUR:
+        climatology_raw = _interpolate_february_29(climatology_raw, np)
+        threshold_raw = _interpolate_february_29(threshold_raw, np)
+    if smooth_same_hour:
+        if smooth_window_hours % 24:
+            raise ValueError("Hobday hourly smoothing requires smooth_window_hours divisible by 24")
+        climatology = _smooth_same_hour_cycle(
+            climatology_raw, smooth_window_hours // 24, np, smooth_min_periods
+        )
+        threshold_cycle = _smooth_same_hour_cycle(
+            threshold_raw, smooth_window_hours // 24, np, smooth_min_periods
+        )
+    else:
+        climatology = _smooth_cycle(
+            climatology_raw,
+            reference_bins,
+            smooth_window_hours,
+            np,
+            smooth_min_periods,
+            calendar_mode,
+        )
+        threshold_cycle = _smooth_cycle(
+            threshold_raw,
+            reference_bins,
+            smooth_window_hours,
+            np,
+            smooth_min_periods,
+            calendar_mode,
+        )
     climatology_by_time = _cycle_by_time(climatology, bins, np)
     threshold = _cycle_by_time(threshold_cycle, bins, np)
     anomaly = values - climatology_by_time
@@ -381,12 +559,14 @@ def gpu_pre_event_fields(
     bins: Any,
     baseline_indices: Any,
     percentile: float = 0.90,
-    smooth_window_hours: int = 120,
+    smooth_window_hours: int = 31 * 24,
     nbins: int = HOURS_PER_LEAP_YEAR,
     smooth_min_periods: int = 1,
     calendar_mode: str = CALENDAR_MODE_MONTH_DAY_HOUR,
+    sampling_window_half_width_days: int = 5,
+    smooth_same_hour: bool = True,
 ) -> PreEventFields:
-    """CuPy pre-event pipeline; inputs and outputs remain in GPU VRAM."""
+    """CuPy hourly Hobday pipeline; inputs and outputs remain in GPU VRAM."""
     from .memory import cupy
 
     cp = cupy()
@@ -396,24 +576,42 @@ def gpu_pre_event_fields(
     _validate_calendar_mode(calendar_mode)
     reference = values[baseline_indices]
     reference_bins = bins[baseline_indices]
-    climatology_raw = _nanmean_by_bin_gpu(reference, reference_bins, nbins, cp)
-    climatology = _smooth_cycle(
-        climatology_raw,
-        reference_bins,
-        smooth_window_hours,
-        cp,
-        smooth_min_periods,
-        calendar_mode,
+    _validate_sampling_window(sampling_window_half_width_days)
+    climatology_raw = _nanmean_by_bin_window(
+        reference, reference_bins, nbins, sampling_window_half_width_days, cp
     )
-    threshold_raw = _nanpercentile_by_bin_gpu(reference, reference_bins, nbins, percentile, cp)
-    threshold_cycle = _smooth_cycle(
-        threshold_raw,
-        reference_bins,
-        smooth_window_hours,
-        cp,
-        smooth_min_periods,
-        calendar_mode,
+    threshold_raw = _nanpercentile_by_bin_window_gpu(
+        reference, reference_bins, nbins, percentile, sampling_window_half_width_days, cp
     )
+    if sampling_window_half_width_days and calendar_mode == CALENDAR_MODE_MONTH_DAY_HOUR:
+        climatology_raw = _interpolate_february_29(climatology_raw, cp)
+        threshold_raw = _interpolate_february_29(threshold_raw, cp)
+    if smooth_same_hour:
+        if smooth_window_hours % 24:
+            raise ValueError("Hobday hourly smoothing requires smooth_window_hours divisible by 24")
+        climatology = _smooth_same_hour_cycle(
+            climatology_raw, smooth_window_hours // 24, cp, smooth_min_periods
+        )
+        threshold_cycle = _smooth_same_hour_cycle(
+            threshold_raw, smooth_window_hours // 24, cp, smooth_min_periods
+        )
+    else:
+        climatology = _smooth_cycle(
+            climatology_raw,
+            reference_bins,
+            smooth_window_hours,
+            cp,
+            smooth_min_periods,
+            calendar_mode,
+        )
+        threshold_cycle = _smooth_cycle(
+            threshold_raw,
+            reference_bins,
+            smooth_window_hours,
+            cp,
+            smooth_min_periods,
+            calendar_mode,
+        )
     climatology_by_time = _cycle_by_time(climatology, bins, cp)
     threshold = _cycle_by_time(threshold_cycle, bins, cp)
     anomaly = values - climatology_by_time
@@ -452,6 +650,13 @@ def _validate_inputs(
         raise ValueError("smooth_window_hours must be between 1 and the climatological cycle length")
     if not 1 <= smooth_min_periods <= smooth_window_hours:
         raise ValueError("smooth_min_periods must be between 1 and smooth_window_hours")
+
+
+def _validate_sampling_window(half_width_days: int) -> None:
+    if not isinstance(half_width_days, int) or isinstance(half_width_days, bool):
+        raise TypeError("sampling_window_half_width_days must be an integer")
+    if half_width_days < 0:
+        raise ValueError("sampling_window_half_width_days must be non-negative")
 
 
 def _validate_calendar_mode(calendar_mode: str) -> None:

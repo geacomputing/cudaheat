@@ -31,7 +31,7 @@ def test_cpu_fields_keep_nans_local_to_each_point(synthetic_sst):
     values = synthetic_sst.analysed_sst.stack(point=("lat", "lon")).values
     bins = hourly_climatology_index(synthetic_sst.time)
     fields = cpu_pre_event_fields(
-        values, bins, np.arange(values.shape[0]), smooth_window_hours=3
+        values, bins, np.arange(values.shape[0]), smooth_window_hours=24 * 3
     )
     assert fields.exceedance.dtype == bool
     assert not fields.exceedance[5, 1]

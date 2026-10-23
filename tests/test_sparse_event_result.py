@@ -102,3 +102,49 @@ def test_point_and_event_timeseries_reconstruct_only_one_source_point(tmp_path):
 
     event = result.event_timeseries(2, pad_hours=1)
     np.testing.assert_array_equal(event["event_id"].values, [0, 2, 2, 2])
+
+
+def test_retained_cycles_are_used_without_cpu_field_recomputation(tmp_path, monkeypatch):
+    time = np.arange(
+        np.datetime64("2000-01-01T00"),
+        np.datetime64("2000-01-01T06"),
+        np.timedelta64(1, "h"),
+    )
+    values = np.arange(24, dtype=np.float32).reshape(6, 2, 2)
+    path = tmp_path / "source.nc"
+    xr.Dataset(
+        {"analysed_sst": (("time", "latitude", "longitude"), values)},
+        coords={"time": time, "latitude": [34.0, 35.0], "longitude": [32.0, 33.0]},
+    ).to_netcdf(path, engine="h5netcdf")
+    result = _result(
+        {
+            "source_path": str(path),
+            "variable": "analysed_sst",
+            "dtype": "float32",
+            "time_dimension": "time",
+            "spatial_dimensions": ("latitude", "longitude"),
+            "baseline": None,
+            "percentile": 0.9,
+            "smooth_window_hours": 1,
+        }
+    )
+    climatology = np.broadcast_to(np.arange(8784, dtype=np.float32)[:, None], (8784, 4)).copy()
+    threshold = climatology + 100.0
+    result.retained_fields = xr.Dataset(
+        {
+            "climatology": (("climatology_hour", "point"), climatology),
+            "threshold_cycle": (("climatology_hour", "point"), threshold),
+        },
+        coords={"climatology_hour": np.arange(8784), "point": np.arange(4)},
+    )
+
+    import cudaheat.result as result_module
+
+    def fail_cpu_recompute(*args, **kwargs):
+        raise AssertionError("retained cycles should avoid CPU field recomputation")
+
+    monkeypatch.setattr(result_module, "cpu_pre_event_fields", fail_cpu_recompute)
+
+    point = result.point_timeseries(latitude=1, longitude=0)
+    np.testing.assert_array_equal(point["climatology"].values, np.arange(6, dtype=np.float32))
+    np.testing.assert_array_equal(point["threshold"].values, np.arange(6, dtype=np.float32) + 100)

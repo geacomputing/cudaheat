@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 
+from cudaheat.detection import detect_events as cudaheat_detect_events
+
 MIN_DURATION = 120
 MAX_INTERNAL_GAP = 6
 JOIN_GAP = 48
@@ -11,27 +13,35 @@ JOIN_GAP = 48
 # ============================================================
 
 def detect_events(exceedance, backend="cpu"):
-    """
-    Adapt this function to the actual CUDAHeat detection API.
-
-    Expected output:
-        [
-            {
-                "start": int,
-                "end": int,
-                "duration_hours": int,
-            },
-            ...
-        ]
-
-    start/end are inclusive integer indices.
-
-    IMPORTANT:
-    Replace NotImplementedError with the actual detection call.
-    """
-    raise NotImplementedError(
-        "Connect this adapter to CUDAHeat detection.py"
+    """Run the public vectorized detector through a one-point threshold field."""
+    if backend == "cpu":
+        xp = np
+    elif backend == "gpu":
+        xp = pytest.importorskip("cupy")
+        if xp.cuda.runtime.getDeviceCount() < 1:
+            pytest.skip("CUDA device unavailable")
+        try:
+            xp.full((1, 1), 0.5)
+        except RuntimeError as exc:
+            pytest.skip(f"CuPy kernel compilation unavailable: {exc}")
+    else:
+        raise ValueError(f"unknown backend {backend!r}")
+    values = xp.asarray(exceedance[:, None], dtype=xp.float64)
+    fields = cudaheat_detect_events(
+        values,
+        xp.full(values.shape, 0.5),
+        min_duration_hours=MIN_DURATION,
+        max_internal_gap_hours=MAX_INTERNAL_GAP,
+        join_gap_hours=JOIN_GAP,
+        xp=xp,
     )
+    starts = xp.asnumpy(fields.events.start) if backend == "gpu" else fields.events.start
+    stops = xp.asnumpy(fields.events.stop) if backend == "gpu" else fields.events.stop
+    durations = xp.asnumpy(fields.events.duration) if backend == "gpu" else fields.events.duration
+    return [
+        {"start": int(start), "end": int(stop - 1), "duration_hours": int(duration)}
+        for start, stop, duration in zip(starts, stops, durations, strict=True)
+    ]
 
 
 # ============================================================

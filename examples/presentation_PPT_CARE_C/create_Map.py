@@ -3,6 +3,8 @@ import xarray as xr
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+from matplotlib.patches import Rectangle
+from matplotlib.path import Path
 
 # ============================================================
 # Load dataset
@@ -21,7 +23,6 @@ plt.style.use("default")
 
 fig = plt.figure(
     figsize=(13.333333, 7.5),
-    dpi=300,
     facecolor="white"
 )
 
@@ -97,7 +98,7 @@ im = sst.plot(
 ax.add_feature(
     cfeature.LAND.with_scale("10m"),
     facecolor="#050505",
-    edgecolor="#555555",
+    edgecolor="#6F6F6F",
     linewidth=0.4,
     zorder=2
 )
@@ -109,82 +110,113 @@ ax.add_feature(
 ax.gridlines(
     draw_labels=False,
     color="white",
-    alpha=0.25,
+    alpha=0.35,
     linewidth=0.5,
     zorder=3
 )
 
 # ============================================================
-# Orthographic globe — upper-right
+# Orthographic inset panel — progressive view of the study domain
 # ============================================================
 
-ax_globe = fig.add_axes(
-    [0.76, 0.74, 0.24, 0.24],
-    projection=ccrs.Orthographic(10, 35)
+panel = fig.add_axes([0.69, 0.70, 0.29, 0.27], zorder=4)
+panel.set_facecolor((0.015, 0.025, 0.04, 0.90))
+panel.set_xticks([])
+panel.set_yticks([])
+for spine in panel.spines.values():
+    spine.set_edgecolor("#688096")
+    spine.set_linewidth(0.8)
+
+panel.text(
+    0.5,
+    0.96,
+    "STUDY DOMAIN CONTEXT",
+    color="white",
+    fontsize=7,
+    fontweight="bold",
+    ha="center",
+    va="top",
+    transform=panel.transAxes,
 )
 
-ax_globe.set_global()
-ax_globe.set_facecolor("none")
-
-# Oceans
-ax_globe.add_feature(
-    cfeature.OCEAN.with_scale("10m"),
-    facecolor="#DCEAF2",
-    zorder=0
-)
-
-# Continents
-ax_globe.add_feature(
-    cfeature.LAND.with_scale("10m"),
-    facecolor="black",
-    edgecolor="#777777",
-    linewidth=0.4,
-    zorder=1
-)
-
-# Globe gridlines
-ax_globe.gridlines(
-    color="gray",
-    alpha=0.3,
-    linewidth=0.7,
-    zorder=2
-)
-
-# Globe outline
-ax_globe.spines["geo"].set_edgecolor("#777777")
-ax_globe.spines["geo"].set_linewidth(0.8)
-
-# ============================================================
-# Red rectangle — SST domain on globe
-# ============================================================
-
+# Cyan distinguishes the SST domain from the red Cyprus study-area box.
+domain_color = "#11FF00"
 n = 100
-
-lon = np.concatenate([
+domain_lon = np.concatenate([
     np.linspace(lon_min, lon_max, n),
     np.full(n, lon_max),
     np.linspace(lon_max, lon_min, n),
-    np.full(n, lon_min)
+    np.full(n, lon_min),
 ])
-
-lat = np.concatenate([
+domain_lat = np.concatenate([
     np.full(n, lat_min),
     np.linspace(lat_min, lat_max, n),
     np.full(n, lat_max),
-    np.linspace(lat_max, lat_min, n)
+    np.linspace(lat_max, lat_min, n),
 ])
 
-ax_globe.plot(
-    lon,
-    lat,
-    transform=ccrs.PlateCarree(),
-    color="red",
-    linewidth=2,
-    zorder=10
+
+def add_domain_globe(bounds, central_longitude, central_latitude, label, extent=None):
+    globe = fig.add_axes(
+        bounds,
+        projection=ccrs.Orthographic(central_longitude, central_latitude),
+        zorder=5
+    )
+    globe.set_facecolor("none")
+    globe.add_feature(cfeature.OCEAN.with_scale("50m"), facecolor="#DCEAF2", zorder=0)
+    globe.add_feature(
+        cfeature.LAND.with_scale("10m"),
+        facecolor="black",
+        edgecolor="#777777",
+        linewidth=0.3,
+        zorder=1,
+    )
+    globe.gridlines(color="gray", alpha=0.3, linewidth=0.5, zorder=2)
+    globe.plot(
+        domain_lon,
+        domain_lat,
+        transform=ccrs.PlateCarree(),
+        color=domain_color,
+        linewidth=1.7,
+        zorder=10,
+    )
+    globe.spines["geo"].set_edgecolor("#9AB0C0")
+    globe.spines["geo"].set_linewidth(0.7)
+    if extent is None:
+        globe.set_global()
+    else:
+        globe.set_extent(extent, crs=ccrs.PlateCarree())
+        theta = np.linspace(0, 2 * np.pi, 100)
+        circle = np.column_stack([np.sin(theta), np.cos(theta)]) * 0.5 + 0.5
+        globe.set_boundary(
+            Path(circle),
+            transform=globe.transAxes,
+        )
+    panel.text(
+        (bounds[0] - 0.69 + bounds[2] / 2) / 0.29,
+        0.05,
+        label,
+        color="#DCEAF2",
+        fontsize=6,
+        ha="center",
+        va="bottom",
+        transform=panel.transAxes,
+    )
+    return globe
+
+
+# A global overview followed by an orthographic close-up of the Eastern Mediterranean.
+overview_globe = add_domain_globe([0.705, 0.735, 0.125, 0.185], 10, 35, "OVERVIEW")
+detail_globe = add_domain_globe(
+    [0.842, 0.735, 0.125, 0.185],
+    28,
+    36,
+    "EASTERN MEDITERRANEAN",
+    extent=[5, 52, 12, 59],
 )
 
 # ============================================================
-# Domain geometry label — over Turkey
+# Domain geometry label — shifted left to clear the inset panel
 # ============================================================
 
 geometry_text = (
@@ -198,13 +230,30 @@ geometry_text = (
 )
 
 ax.text(
-    30.0,
+    29.050,
     38.75,
     geometry_text,
     transform=ccrs.PlateCarree(),
     fontsize=11,
     fontweight="bold",
     color="white",
+    fontfamily="monospace",
+    va="center",
+    ha="center",
+    linespacing=1.4,
+    bbox=dict(facecolor="#050505", edgecolor="none", alpha=0.9, pad=0.5),
+    zorder=20
+)
+
+
+ax.text(
+    30,
+    38.775,
+    "≈6km",
+    transform=ccrs.PlateCarree(),
+    fontsize=11,
+    fontweight="bold",
+    color="red",
     fontfamily="monospace",
     va="center",
     ha="center",
@@ -220,16 +269,16 @@ ax.text(
 # ============================================================
 
 study_text = (
-    "MARINE HEATWAVE (MHW) STUDY DOMAIN\n"
+    " STUDY DOMAIN\n"
     "Eastern Mediterranean Sea\n"
     "8 years of hourly SST observations"
 )
 
 ax.text(
-    22.35, 31.46,
+    21.95, 31.86,
     study_text,
     transform=ccrs.PlateCarree(),
-    fontsize=7,
+    fontsize=11,
     #fontweight="bold",
     color="white",
     fontfamily="sans-serif",
@@ -243,8 +292,6 @@ ax.text(
 # ============================================================
 # Future study area — Cyprus
 # ============================================================
-
-from matplotlib.patches import Rectangle
 
 # Approximate geographical boundaries
 cyprus_lon_min = 31.5

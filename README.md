@@ -1,6 +1,6 @@
 # CUDAHeat
 
-Experimental GPU-native preprocessing of hourly SST data for Marine Heatwave analysis. Event detection is intentionally not implemented yet.
+Experimental GPU-native preprocessing and event detection for hourly SST Marine Heatwave analysis.
 
 ## Architecture
 
@@ -15,12 +15,18 @@ Time is scientifically indivisible; space is computationally divisible. CUDAHeat
 - Runtime NVIDIA VRAM discovery and conservative VRAM-aware point batching.
 - Configurable 30% free-VRAM safety reserve.
 - Explicit `float32` default or `float64` processing.
-- NaN-aware hourly calendar-bin climatology, percentile thresholds, circular smoothing, anomaly, excess, and GPU exceedance mask.
+- NaN-aware hourly Hobday climatology: same-clock-hour 11-day sampling,
+  90th-percentile thresholds, 31-day same-hour circular smoothing, anomaly,
+  excess, and GPU exceedance mask.
 - Per-batch host-read, preparation, allocation, transfer, CUDA-event compute, result-assembly, OOM-retry, and VRAM telemetry.
 - Explicit preallocated device-buffer transfers, avoiding an unnecessary host/device conversion in the H2D path.
 - Separate benchmark utilities with CSV/JSON export, a timestamped campaign runner, and high-resolution Matplotlib figures (PNG/PDF/SVG).
 
-The climatological cycle has 366 × 24 month/day/hour bins. Smoothing is circular and NaN-aware. NetCDF I/O stays on CPU through Xarray; CuPy performs GPU calculations. The `kernels` namespace is reserved for future profiling-justified CUDA event-detection kernels.
+The default climatological cycle has 366 × 24 month/day/hour bins. The
+hourly adaptation pools equivalent clock hours across a centred ±5-calendar-day
+window, interpolates 29 February from its neighbours, then applies centred,
+circular 31-day smoothing without blending clock hours. NetCDF I/O stays on
+CPU through Xarray; CuPy performs GPU calculations.
 
 ## Install
 
@@ -40,7 +46,7 @@ from cudaheat import CUDAHeat
 
 with CUDAHeat("sst.nc", variable="analysed_sst", dtype="float32", vram_safety=0.30, devices=[0]) as hw:
     print(hw.ntime, hw.npoints, hw.batch_size, hw.gpu_info)
-    result = hw.run(baseline=(1982, 2011), percentile=0.90, smooth_window_hours=120)
+    result = hw.run(baseline=(1982, 2011), percentile=0.90)  # default: 31 days (744 h)
     print(result.exceedance_count)
 
     # Explicit, host-memory-intensive output for manageable datasets only.
@@ -153,7 +159,7 @@ report campaign on a real dataset:
 ```bash
 python benchmarks/run_real_data_campaign.py /path/to/sst.nc \
   --variable analysed_sst --baseline 2019 2025 \
-  --percentile 0.90 --smooth-window-hours 120
+  --percentile 0.90 --smooth-window-hours 744
 ```
 
 Each campaign writes a non-overwriting timestamped directory containing raw
@@ -185,4 +191,9 @@ no NaN-location disagreements were observed.
 
 ## Roadmap
 
-`detect()` is a documented placeholder for complete-time GPU event segmentation. The sequential first milestone is device-explicit; a future scheduler can distribute independent spatial batches across `devices=[0, 1, ...]` without rewriting the scientific core. Validate results, precision, and memory telemetry for every SST product before scientific use.
+`detect()` uses a documented complete-time GPU event-segmentation pipeline.
+Its defaults are a 120-hour minimum duration, 6-hour bounded internal gaps,
+and 48-hour joining gaps. The sequential first milestone is device-explicit;
+a future scheduler can distribute independent spatial batches across
+`devices=[0, 1, ...]` without rewriting the scientific core. Validate results,
+precision, and memory telemetry for every SST product before scientific use.

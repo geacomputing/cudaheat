@@ -63,6 +63,9 @@ MANUAL_STORAGE_ALIGNMENT_TIMINGS = (
 RESULTS_DIR: Path | None = None
 OUTPUT_DIR: Path | None = None
 MANIFEST: dict[str, Any] = {}
+SPATIAL_CHUNKING_RESULTS = (
+    REPOSITORY_ROOT / "benchmarks" / "spatial_Chunking" / "results.json"
+)
 
 plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 11, "axes.unicode_minus": False})
 
@@ -117,6 +120,17 @@ def records(filename: str) -> list[dict[str, Any]]:
             f"No records in {path}; the benchmark run may have failed before measuring."
         )
     return payload["records"]
+
+
+def spatial_chunking_records() -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Load the standalone 40-year spatial-chunking benchmark results."""
+    if not SPATIAL_CHUNKING_RESULTS.is_file():
+        raise FileNotFoundError(f"Missing spatial-chunking results: {SPATIAL_CHUNKING_RESULTS}")
+    payload = json.loads(SPATIAL_CHUNKING_RESULTS.read_text(encoding="utf-8"))
+    executions = payload.get("executions") if isinstance(payload, dict) else None
+    if not isinstance(executions, list) or not executions:
+        raise ValueError(f"{SPATIAL_CHUNKING_RESULTS} has no execution records")
+    return payload, executions
 
 
 def frame(title: str, subtitle: str, number: int) -> plt.Figure:
@@ -416,6 +430,147 @@ def plot_pipeline_anatomy_by_input_size() -> None:
         "gpu_measurements.json",
     )
     save(fig, "benchmark_09_pipeline_anatomy_by_input_size.png")
+
+
+def plot_spatial_chunking_scaling() -> None:
+    """Show the cost of growing space while retaining a 40-year time axis."""
+    payload, executions = spatial_chunking_records()
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    for row in executions:
+        grouped.setdefault(int(row["npoints"]), []).append(row)
+
+    points = sorted(grouped)
+    components = (
+        ("Host I/O", "host_read_seconds", IO_COLOR),
+        ("Host → GPU", "transfer_to_device_seconds", H2D_COLOR),
+        ("GPU compute", "gpu_compute_seconds", COMPUTE_COLOR),
+        ("Other overhead", None, LIGHT),
+    )
+    total = np.asarray(
+        [np.mean([float(row["total_seconds"]) for row in grouped[point]]) for point in points]
+    )
+    values: dict[str, np.ndarray] = {}
+    for label, field, _ in components[:-1]:
+        values[label] = np.asarray(
+            [np.mean([float(row[field]) for row in grouped[point]]) for point in points]
+        )
+    values["Other overhead"] = np.maximum(
+        total - sum(values[label] for label, _, _ in components[:-1]), 0.0
+    )
+    batches = np.asarray(
+        [np.mean([float(row["spatial_batches"]) for row in grouped[point]]) for point in points]
+    )
+    ntime = int(payload["source"]["ntime"])
+    repetitions = int(payload["cudaheat"]["repetitions"])
+    old_domain_points = 22_083
+    old_domain_seconds = 25.0
+
+    fig = frame(
+        "GPU makes time cheap; space adds cost",
+        f"A fixed {ntime:,}-hour (~40-year) history per point; automatic spatial chunking",
+        13,
+    )
+    ax = axis(fig, bounds=(0.115, 0.275, 0.710, 0.335))
+    x = np.arange(len(points))
+    bottom = np.zeros(len(points))
+    handles = []
+    for label, _, color in components:
+        bars = ax.bar(
+            x,
+            values[label],
+            bottom=bottom,
+            width=0.68,
+            color=color,
+            label=label,
+            zorder=3,
+        )
+        handles.append(bars)
+        bottom += values[label]
+    ax.set(
+        xticks=x,
+        xticklabels=[f"{point:,}" for point in points],
+        xlabel="Active spatial points (each retaining 40 years of hourly data)",
+        ylabel="Mean execution time (s)",
+        ylim=(0, max(total) * 1.22),
+    )
+    ax.tick_params(axis="x", labelsize=8.8)
+    ax.axhline(
+        old_domain_seconds,
+        color=TEAL,
+        lw=1.25,
+        ls=(0, (3, 3)),
+        alpha=0.9,
+        zorder=6,
+    )
+    ax.scatter(
+        [x[-1]],
+        [old_domain_seconds],
+        s=58,
+        facecolor=WHITE,
+        edgecolor=TEAL,
+        linewidth=1.7,
+        zorder=7,
+    )
+    ax.text(
+        x[0] - 0.30,
+        old_domain_seconds + 1.1,
+        f"8-year full-domain reference\n{old_domain_points:,} points · {old_domain_seconds:.0f} s",
+        color=TEAL,
+        fontsize=8.6,
+        weight="bold",
+        va="bottom",
+        bbox={"boxstyle": "round,pad=0.28", "fc": WHITE, "ec": "none", "alpha": 0.94},
+        zorder=8,
+    )
+
+    right = ax.twinx()
+    right.set_zorder(ax.get_zorder() + 1)
+    right.patch.set_visible(False)
+    (chunk_line,) = right.plot(
+        x,
+        batches,
+        color=INK,
+        lw=2.3,
+        ls=(0, (4, 3)),
+        marker="D",
+        ms=5.5,
+        mfc=WHITE,
+        mec=INK,
+        mew=1.2,
+        label="Automatic spatial chunks",
+        zorder=6,
+    )
+    right.set(ylim=(0, max(batches) * 1.22), ylabel="Spatial chunks per run")
+    right.tick_params(axis="y", length=0, pad=10, labelcolor=INK, labelsize=10)
+    right.spines["top"].set_visible(False)
+    right.spines["right"].set_visible(False)
+
+    fig.legend(
+        [*handles, chunk_line],
+        [label for label, _, _ in components] + ["Automatic spatial chunks"],
+        loc="center left",
+        bbox_to_anchor=(0.205, 0.670),
+        ncol=3,
+        frameon=False,
+        fontsize=9.0,
+        columnspacing=1.2,
+    )
+    fig.text(0.075, 0.671, f"{repetitions}-RUN MEAN", color=MUTED, fontsize=10, weight="bold")
+    fig.text(
+        0.922,
+        0.671,
+        f"40-YEAR RUN  ·  {total[0]:.1f} → {total[-1]:.1f} s  ·  {batches[0]:.0f} → {batches[-1]:.0f} chunks",
+        color=TEAL,
+        fontsize=10,
+        weight="bold",
+        ha="right",
+    )
+    caption(
+        fig,
+        "Spatial scaling is costly (CPU-bound); temporal scaling is cheap (GPU-accelerated)",
+        "benchmarks/spatial_Chunking/results.json",
+    )
+    save(fig, "benchmark_13_spatial_chunking_scaling.png")
 
 
 def plot_batch_tradeoff() -> None:
@@ -1057,6 +1212,7 @@ PLOT_REGISTRY = {
     "adaptive_batching": plot_adaptive_batching,
     "pipeline_anatomy": plot_pipeline_anatomy,
     "pipeline_anatomy_by_input_size": plot_pipeline_anatomy_by_input_size,
+    "spatial_chunking_scaling": plot_spatial_chunking_scaling,
     "batch_tradeoff": plot_batch_tradeoff,
     "vram_safety": plot_vram_safety,
     "precision_and_accuracy": plot_precision_and_accuracy,

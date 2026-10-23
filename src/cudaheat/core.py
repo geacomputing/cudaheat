@@ -21,6 +21,7 @@ from .climatology import (
     climatology_bin_count,
     gpu_pre_event_fields,
     hourly_climatology_index,
+    validate_contiguous_hourly_time,
 )
 from .detection import EventRuns, detect_events
 from .exceptions import InsufficientVRAMError
@@ -40,8 +41,8 @@ from .result import EventDetectionResult, EventGrid
 from .timing import log_elapsed_time
 
 logger = logging.getLogger(__name__)
-_CUDAHEAT_SMOOTH_WINDOW_HOURS = 120
-_HOURWAVE_SMOOTH_WINDOW_HOURS = 15 * 24
+_CUDAHEAT_SMOOTH_WINDOW_HOURS = 31 * 24
+_HOBDAY_SAMPLING_WINDOW_HALF_WIDTH_DAYS = 5
 
 
 @dataclass
@@ -70,11 +71,12 @@ class PipelineResult:
 
 @dataclass
 class EventBatchOutput:
-    """Compact event runs returned to the CPU for one spatial GPU batch."""
+    """Event runs and explicitly retained cycles for one spatial GPU batch."""
 
     point_start: int
     point_stop: int
     events: EventRuns
+    fields: dict[str, np.ndarray]
     telemetry: BatchTelemetry
 
 
@@ -107,10 +109,10 @@ class CUDAHeat:
         Maximum source chunk width along the final spatial dimension for lazy
         reads. It affects disk-to-CPU I/O only, not CUDAHeat's GPU batch size.
     calendar_mode:
-        ``"month_day_hour"`` (default) preserves CUDAHeat's historic fixed
-        366-day month/day/hour bins. ``"dayofyear"`` reproduces HourWave's
-        day-of-year hourly grouping and, when smoothing options are omitted,
-        its 360-hour window with a 24-hour minimum period.
+        ``"month_day_hour"`` (default) groups equivalent calendar hours in a
+        fixed 366-day cycle. ``"dayofyear"`` groups by fractional day of year
+        (day-of-year plus clock hour); both modes use the same hourly Hobday
+        sampling and smoothing defaults.
     timing_logging:
         Print per-batch disk-I/O and host-to-GPU transfer timing records.
         Defaults to ``True`` for backwards compatibility. Disable it for
@@ -140,6 +142,7 @@ class CUDAHeat:
             "mask",
         }
     )
+    _RETAINABLE_DETECTION_FIELDS = frozenset({"climatology", "threshold_cycle"})
 
     def __init__(
         self,
@@ -259,6 +262,7 @@ class CUDAHeat:
             self.close()
             raise ValueError("SST variable must have non-empty time and spatial dimensions")
         self._time = self._stacked[self.time_dim]
+        validate_contiguous_hourly_time(self._time)
         self._bins = hourly_climatology_index(self._time, calendar_mode=self.calendar_mode)
         self._estimator = VRAMEstimator(
             self.ntime, self.dtype.itemsize, safety_fraction=self.vram_safety
@@ -558,6 +562,8 @@ class CUDAHeat:
                 "percentile": percentile,
                 "smooth_window_hours": smooth_window_hours,
                 "smooth_min_periods": resolved_smooth_min_periods,
+                "sampling_window_half_width_days": _HOBDAY_SAMPLING_WINDOW_HALF_WIDTH_DAYS,
+                "same_hour_smoothing": True,
                 "calendar_mode": self.calendar_mode,
                 "time_dimension": self.time_dim,
                 "spatial_dimensions": self.spatial_dims,
@@ -614,17 +620,20 @@ class CUDAHeat:
         percentile: float = 0.90,
         smooth_window_hours: int | None = None,
         smooth_min_periods: int | None = None,
-        min_duration_hours: int = 1,
-        max_internal_gap_hours: int = 0,
-        join_gap_hours: int = 0,
+        min_duration_hours: int = 120,
+        max_internal_gap_hours: int = 6,
+        join_gap_hours: int = 48,
+        retain_fields: Iterable[str] = (),
     ) -> EventDetectionResult:
         """Detect vectorized threshold-exceedance events on the GPU.
 
         The pipeline preserves raw exceedance, fills short internal gaps,
         filters contiguous runs by duration, then joins nearby candidates.
-        Only the compact event catalogue is retained on the host.  Use the
-        result's CPU-only ``to_xarray()`` method to create a chunked dense
-        event-ID cube when that representation is needed.
+        By default only the compact event catalogue is retained on the host.
+        ``retain_fields={"climatology", "threshold_cycle"}`` additionally
+        preserves the smoothed annual cycles needed for CPU-only event plots.
+        These fields have shape ``(climatology_hour, point)``; a full
+        timestamp-aligned threshold is deliberately not retained.
         """
         if not isinstance(min_duration_hours, int) or isinstance(min_duration_hours, bool):
             raise TypeError("min_duration_hours must be an integer")
@@ -638,12 +647,22 @@ class CUDAHeat:
             raise TypeError("join_gap_hours must be an integer")
         if join_gap_hours < 0:
             raise ValueError("join_gap_hours must be non-negative")
+        retained = frozenset(retain_fields)
+        unknown_retained = retained - self._RETAINABLE_DETECTION_FIELDS
+        if unknown_retained:
+            raise ValueError(
+                "unknown retained detection field(s): " f"{sorted(unknown_retained)!r}"
+            )
         smooth_window_hours = self._resolve_smooth_window_hours(smooth_window_hours)
         rows = baseline_rows(self._time, baseline)
         climatology_nbins = self._climatology_nbins(rows)
         resolved_smooth_min_periods = self._resolve_smooth_min_periods(
             smooth_window_hours, smooth_min_periods
         )
+        retained_buffers = {
+            name: np.empty((climatology_nbins, self.npoints), dtype=self.dtype)
+            for name in retained
+        }
         event_parts: list[EventRuns] = []
         telemetry: list[BatchTelemetry] = []
         point_start = 0
@@ -673,6 +692,7 @@ class CUDAHeat:
                         retries,
                         host_read_seconds,
                         host_prepare_seconds,
+                        retained,
                     )
                 except Exception as exc:
                     del cpu_values
@@ -703,6 +723,7 @@ class CUDAHeat:
                         duration=np.asarray(output.events.duration, dtype=np.intp),
                     )
                 )
+                self._store_batch(output.fields, retained_buffers, point_start, point_stop)
                 del cpu_values
                 telemetry.append(
                     replace(
@@ -717,6 +738,7 @@ class CUDAHeat:
         self.batch_size = active_batch_size
         final_assembly_start = perf_counter()
         data = self._event_dataset(event_parts)
+        retained_field_data = self._retained_cycle_dataset(retained_buffers, climatology_nbins)
         grid = EventGrid(
             time=np.array(self._time.values, copy=True),
             point_index=self._stacked.indexes["point"].copy(),
@@ -737,10 +759,13 @@ class CUDAHeat:
                 "percentile": percentile,
                 "smooth_window_hours": smooth_window_hours,
                 "smooth_min_periods": resolved_smooth_min_periods,
+                "sampling_window_half_width_days": _HOBDAY_SAMPLING_WINDOW_HALF_WIDTH_DAYS,
+                "same_hour_smoothing": True,
                 "calendar_mode": self.calendar_mode,
                 "min_duration_hours": min_duration_hours,
                 "max_internal_gap_hours": max_internal_gap_hours,
                 "join_gap_hours": join_gap_hours,
+                "retained_fields": tuple(sorted(retained)),
                 "time_was_split": False,
                 "detection_stages": (
                     "exceedance",
@@ -760,6 +785,7 @@ class CUDAHeat:
                 "result_dataset_assembly_seconds": perf_counter() - final_assembly_start,
             },
             _grid=grid,
+            retained_fields=retained_field_data,
         )
         self.last_detection_result = result
         return result
@@ -814,6 +840,8 @@ class CUDAHeat:
                 smooth_min_periods=smooth_min_periods,
                 nbins=climatology_nbins,
                 calendar_mode=self.calendar_mode,
+                sampling_window_half_width_days=_HOBDAY_SAMPLING_WINDOW_HALF_WIDTH_DAYS,
+                smooth_same_hour=True,
             )
             event_end.record()
             event_end.synchronize()
@@ -872,8 +900,9 @@ class CUDAHeat:
         retries: int,
         host_read_seconds: float,
         host_prepare_seconds: float,
+        retained: frozenset[str],
     ) -> tuple[EventBatchOutput, BatchTelemetry]:
-        """Preprocess and detect one batch, returning only compact event runs."""
+        """Preprocess and detect one batch, retaining requested compact cycles."""
         cp = cupy()
         with cp.cuda.Device(self.device_id):
             free_before, total_bytes = cp.cuda.runtime.memGetInfo()
@@ -910,6 +939,8 @@ class CUDAHeat:
                 smooth_min_periods=smooth_min_periods,
                 nbins=climatology_nbins,
                 calendar_mode=self.calendar_mode,
+                sampling_window_half_width_days=_HOBDAY_SAMPLING_WINDOW_HALF_WIDTH_DAYS,
+                smooth_same_hour=True,
             )
             detected = detect_events(
                 gpu_values,
@@ -931,6 +962,9 @@ class CUDAHeat:
                 stop=cp.asnumpy(detected.events.stop),
                 duration=cp.asnumpy(detected.events.duration),
             )
+            retained_fields = {
+                name: cp.asnumpy(getattr(gpu_fields, name)) for name in retained
+            }
             cp.cuda.get_current_stream().synchronize()
             transfer_from_device = perf_counter() - transfer_start
             free_after, _ = cp.cuda.runtime.memGetInfo()
@@ -959,7 +993,10 @@ class CUDAHeat:
             )
             del detected, gpu_fields, gpu_values, gpu_bins, gpu_rows
             release_gpu_memory(self.device_id)
-            return EventBatchOutput(point_start, point_stop, events, telemetry), telemetry
+            return (
+                EventBatchOutput(point_start, point_stop, events, retained_fields, telemetry),
+                telemetry,
+            )
 
     def _transfer_requested_fields(self, fields: PreEventFields) -> dict[str, np.ndarray]:
         requested = getattr(self, "_active_return_fields", frozenset())
@@ -1011,6 +1048,24 @@ class CUDAHeat:
                 else self.time_dim
             )
             data[name] = self._to_dataarray(values, name, leading_dim, climatology_nbins)
+        return xr.Dataset(data)
+
+    def _retained_cycle_dataset(
+        self, buffers: dict[str, np.ndarray], climatology_nbins: int
+    ) -> xr.Dataset:
+        """Wrap retained cycle buffers without expanding them over time."""
+        data = {
+            name: xr.DataArray(
+                values,
+                dims=("climatology_hour", "point"),
+                coords={
+                    "climatology_hour": np.arange(climatology_nbins),
+                    "point": self._stacked["point"],
+                },
+                name=name,
+            )
+            for name, values in buffers.items()
+        }
         return xr.Dataset(data)
 
     def _event_dataset(self, event_parts: list[EventRuns]) -> xr.Dataset:
@@ -1092,24 +1147,24 @@ class CUDAHeat:
 
     def _resolve_smooth_min_periods(self, window: int, requested: int | None) -> int:
         if requested is None:
-            # HourWave defaults to min(24, window); retain CUDAHeat's historic
-            # one-valid-bin behavior for the default month/day/hour calendar.
-            requested = min(24, window) if self.calendar_mode == CALENDAR_MODE_DAY_OF_YEAR else 1
+            requested = 1
         if not isinstance(requested, int) or isinstance(requested, bool):
             raise TypeError("smooth_min_periods must be an integer or None")
-        if not 1 <= requested <= window:
-            raise ValueError("smooth_min_periods must be between 1 and smooth_window_hours")
+        if not 1 <= requested <= window // 24:
+            raise ValueError(
+                "smooth_min_periods must be between 1 and the number of smoothing days"
+            )
         return requested
 
     def _resolve_smooth_window_hours(self, requested: int | None) -> int:
         if requested is None:
-            return (
-                _HOURWAVE_SMOOTH_WINDOW_HOURS
-                if self.calendar_mode == CALENDAR_MODE_DAY_OF_YEAR
-                else _CUDAHEAT_SMOOTH_WINDOW_HOURS
-            )
+            return _CUDAHEAT_SMOOTH_WINDOW_HOURS
         if not isinstance(requested, int) or isinstance(requested, bool):
             raise TypeError("smooth_window_hours must be an integer or None")
+        if requested < 24 or requested % 24:
+            raise ValueError(
+                "smooth_window_hours must be a positive whole number of days for hourly Hobday smoothing"
+            )
         return requested
 
     @staticmethod

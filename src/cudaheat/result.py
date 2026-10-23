@@ -36,12 +36,13 @@ class EventGrid:
 
 @dataclass
 class EventDetectionResult:
-    """Sparse event catalogue plus GPU-independent dense reconstruction tools."""
+    """Sparse event catalogue plus optional retained GPU-derived cycles."""
 
     data: xr.Dataset
     telemetry: tuple[Any, ...]
     metadata: dict[str, Any]
     _grid: EventGrid
+    retained_fields: xr.Dataset = field(default_factory=xr.Dataset)
 
     @property
     def event_count(self) -> xr.DataArray:
@@ -124,15 +125,18 @@ class EventDetectionResult:
         return catalogue
 
     def point_timeseries(self, **spatial_indexers: int) -> xr.Dataset:
-        """Return CPU-computed SST and event fields for one positional grid point.
+        """Return SST and event fields for one positional grid point.
 
         Keyword arguments use :meth:`xarray.DataArray.isel` positional
-        semantics, for example ``latitude=33, longitude=30``.  Only one full
-        time series is read from the source NetCDF file, so this is safe for
-        plotting production-size grids.
+        semantics, for example ``latitude=33, longitude=30``.  Only one time
+        series is read from the source NetCDF file.  Retained cycles are used
+        when available; otherwise climatology and threshold are recomputed on
+        CPU for compatibility with existing sparse results.
         """
         local_point = _local_point_from_isel(self._grid, spatial_indexers)
-        return _source_point_timeseries(self.data, self.metadata, self._grid, local_point)
+        return _source_point_timeseries(
+            self.data, self.metadata, self._grid, local_point, self.retained_fields
+        )
 
     def point_events(self, **spatial_indexers: int) -> xr.Dataset:
         """Return the sparse event catalogue for one positional grid point."""
@@ -143,7 +147,8 @@ class EventDetectionResult:
         """Return a plot-ready CPU time window around one retained event.
 
         The result contains ``sst``, ``climatology``, ``threshold``,
-        ``exceedance``, and ``event_id``.  No CUDA work is performed.
+        ``exceedance``, and ``event_id``.  Retained cycles are used when
+        present; no CUDA work is performed.
         """
         if not isinstance(event_id, int) or isinstance(event_id, bool):
             raise TypeError("event_id must be an integer")
@@ -154,7 +159,9 @@ class EventDetectionResult:
         event_position = int(event_positions[0])
         global_point = int(np.asarray(self.data["point_index"].values)[event_position])
         local_point = _local_point_from_global(self._grid, global_point)
-        history = _source_point_timeseries(self.data, self.metadata, self._grid, local_point)
+        history = _source_point_timeseries(
+            self.data, self.metadata, self._grid, local_point, self.retained_fields
+        )
         start = int(np.asarray(self.data["start_index"].values)[event_position])
         stop = int(np.asarray(self.data["stop_index"].values)[event_position])
         return history.isel(
@@ -211,9 +218,13 @@ def _local_point_from_global(grid: EventGrid, global_point: int) -> int:
 
 
 def _source_point_timeseries(
-    sparse: xr.Dataset, metadata: dict[str, Any], grid: EventGrid, local_point: int
+    sparse: xr.Dataset,
+    metadata: dict[str, Any],
+    grid: EventGrid,
+    local_point: int,
+    retained_fields: xr.Dataset,
 ) -> xr.Dataset:
-    """Read and process one source point entirely on the CPU."""
+    """Read one source point and align retained cycles when they are available."""
     source_path = metadata.get("source_path")
     variable = metadata.get("variable")
     spatial_dims = tuple(metadata.get("spatial_dimensions", ()))
@@ -255,21 +266,33 @@ def _source_point_timeseries(
     time_coordinate = xr.DataArray(time, dims=(time_dim,), coords={time_dim: time})
     calendar_mode = metadata.get("calendar_mode", CALENDAR_MODE_MONTH_DAY_HOUR)
     bins = hourly_climatology_index(time_coordinate, calendar_mode=calendar_mode)
-    rows = baseline_rows(time_coordinate, metadata.get("baseline"))
-    nbins = climatology_bin_count(bins, rows, calendar_mode=calendar_mode)
-    fields = cpu_pre_event_fields(
-        values[:, None],
-        bins,
-        rows,
-        percentile=float(metadata["percentile"]),
-        smooth_window_hours=int(metadata["smooth_window_hours"]),
-        nbins=nbins,
-        smooth_min_periods=int(metadata.get("smooth_min_periods", 1)),
-        calendar_mode=calendar_mode,
+    climatology_by_time = _retained_cycle_by_time(
+        retained_fields, "climatology", bins, local_point, values.size
     )
-    climatology_by_time = np.full(values.size, np.nan, dtype=fields.climatology.dtype)
-    valid_bins = (bins >= 0) & (bins < nbins)
-    climatology_by_time[valid_bins] = fields.climatology[bins[valid_bins], 0]
+    threshold_by_time = _retained_cycle_by_time(
+        retained_fields, "threshold_cycle", bins, local_point, values.size
+    )
+    if climatology_by_time is None or threshold_by_time is None:
+        rows = baseline_rows(time_coordinate, metadata.get("baseline"))
+        nbins = climatology_bin_count(bins, rows, calendar_mode=calendar_mode)
+        fields = cpu_pre_event_fields(
+            values[:, None],
+            bins,
+            rows,
+            percentile=float(metadata["percentile"]),
+            smooth_window_hours=int(metadata["smooth_window_hours"]),
+            nbins=nbins,
+            smooth_min_periods=int(metadata.get("smooth_min_periods", 1)),
+            calendar_mode=calendar_mode,
+            sampling_window_half_width_days=int(
+                metadata.get("sampling_window_half_width_days", 0)
+            ),
+            smooth_same_hour=bool(metadata.get("same_hour_smoothing", False)),
+        )
+        if climatology_by_time is None:
+            climatology_by_time = _align_cycle_to_time(fields.climatology[:, 0], bins, values.size)
+        if threshold_by_time is None:
+            threshold_by_time = fields.threshold[:, 0]
     event_id = _point_event_ids(sparse, global_point, values.size)
     coordinates: dict[str, Any] = {time_dim: time}
     coordinates.update(point_coords)
@@ -277,12 +300,34 @@ def _source_point_timeseries(
         {
             "sst": (time_dim, values),
             "climatology": (time_dim, climatology_by_time),
-            "threshold": (time_dim, fields.threshold[:, 0]),
-            "exceedance": (time_dim, fields.exceedance[:, 0]),
+            "threshold": (time_dim, threshold_by_time),
+            "exceedance": (time_dim, np.logical_and(values > threshold_by_time, ~np.isnan(values))),
             "event_id": (time_dim, event_id),
         },
         coords=coordinates,
     )
+
+
+def _retained_cycle_by_time(
+    retained_fields: xr.Dataset,
+    name: str,
+    bins: np.ndarray,
+    local_point: int,
+    ntime: int,
+) -> np.ndarray | None:
+    """Align one stored ``(calendar_hour, point)`` cycle to a time series."""
+    if name not in retained_fields:
+        return None
+    cycle = np.asarray(retained_fields[name].isel(point=local_point).values)
+    return _align_cycle_to_time(cycle, bins, ntime)
+
+
+def _align_cycle_to_time(cycle: np.ndarray, bins: np.ndarray, ntime: int) -> np.ndarray:
+    """Expand a compact calendar cycle to a single timestamp-aligned series."""
+    by_time = np.full(ntime, np.nan, dtype=cycle.dtype)
+    valid_bins = (bins >= 0) & (bins < cycle.size)
+    by_time[valid_bins] = cycle[bins[valid_bins]]
+    return by_time
 
 
 def _point_event_ids(sparse: xr.Dataset, global_point: int, ntime: int) -> np.ndarray:

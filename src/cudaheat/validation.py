@@ -13,6 +13,9 @@ from .climatology import PreEventFields, baseline_rows, cpu_pre_event_fields, gp
 from .exceptions import InsufficientVRAMError
 from .memory import cupy, release_gpu_memory, reduced_batch_size
 
+
+_HOBDAY_SAMPLING_WINDOW_HALF_WIDTH_DAYS = 5
+
 if TYPE_CHECKING:
     from .core import CUDAHeat
 
@@ -401,6 +404,8 @@ def validate_cpu_gpu(
                 climatology_nbins,
                 resolved_smooth_min_periods,
                 engine.calendar_mode,
+                _HOBDAY_SAMPLING_WINDOW_HALF_WIDTH_DAYS,
+                True,
             )
             try:
                 gpu_fields = _gpu_fields(
@@ -496,6 +501,8 @@ def _gpu_fields(
             climatology_nbins,
             smooth_min_periods,
             calendar_mode,
+            _HOBDAY_SAMPLING_WINDOW_HALF_WIDTH_DAYS,
+            True,
         )
         copied = PreEventFields(*(cp.asnumpy(getattr(fields, name)) for name in fields.__dataclass_fields__))
         del fields, values, bins, gpu_rows
