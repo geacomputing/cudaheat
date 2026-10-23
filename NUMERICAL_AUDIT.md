@@ -59,3 +59,21 @@ Method basis: [Hobday et al. (2016)](https://wernberglab.org/wp-content/uploads/
   `util.extend_netcdf_backward` and a real-data test that executes an external
   dataset at import time. Re-run GPU and full-suite validation after repairing
   the CUDA installation and those test fixtures.
+
+
+
+
+
+
+# Report to COPERNICUS
+## This dataset has a problem: 
+
+`for latitude= 35.38 and longitude=27.56 last days of october and beginning of november, I see, in SST, some gaps. Shouldn't this dataset L4 be gap-free?`
+
+Yes—these are real missing SST values, not plotting gaps.
+At the nearest retained point (35.375, 27.5625), sst_cudaheat.nc has 5 NaNs. In particular:
+- 2023-11-01 01:00
+- 2023-11-01 16:00
+are NaN at all 22,083 retained ocean points. The time axis itself is continuous hourly; the L4 field is missing at those timestamps.
+CUDAHeat preserves these raw NaNs intentionally. With max_internal_gap_hours=0, they break an event. With a positive gap allowance, an event may bridge them, but the plotted raw sst remains NaN.
+So “L4 gap-free” is not true for this local file; its source has missing analysis frames.

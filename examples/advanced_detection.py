@@ -50,7 +50,7 @@ if True:
             percentile=.9,
             #smooth_window_hours=24*10,
             min_duration_hours=120,
-            max_internal_gap_hours=0, 
+            max_internal_gap_hours=10, 
             join_gap_hours=0, 
             retain_fields={"climatology", "threshold_cycle"}
         )
@@ -66,15 +66,19 @@ if True:
     print()
 
 
+    plt.close("all")
 
 
-    for pts in [2000, 4000, 6000, 8000, 10000, 12000, 13000, 14000, 15000, 16000, 17000, 18000, 22000]:
+    for pts in np.arange(0, len(result.data.event), 10000):
     
-        series = result.event_timeseries(event_id=pts, pad_hours=0)
+        series = result.event_timeseries(event_id=int(pts+1), pad_hours=0)
         fig = plt.figure()
         ax = fig.add_subplot(111)
         series.climatology.plot(ax=ax, label="climatology")
         series.sst.plot(ax=ax, label="sst")
         series.threshold.plot(ax=ax, label="threshold")
+
+        text4title=f"Lat, lon = ({series.latitude.values}, {series.longitude.values}) - pctl: {result.metadata["percentile"]}\nmin_duration: {result.metadata["min_duration_hours"]} , max internal gaps: {result.metadata["max_internal_gap_hours"]}"
+        
         plt.legend()
         plt.plot()
