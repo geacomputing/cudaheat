@@ -123,6 +123,7 @@ _SCHEMA_STATEMENTS = (
         original_source_path TEXT,
         source_sha256 CHAR(64) NOT NULL,
         source_checksum_algorithm TEXT NOT NULL,
+        climatology_hash CHAR(64),
         variable TEXT NOT NULL,
         dtype TEXT,
         baseline_start SMALLINT,
@@ -151,11 +152,13 @@ _SCHEMA_STATEMENTS = (
     )
     """,
     "ALTER TABLE runs ADD COLUMN IF NOT EXISTS run_fingerprint CHAR(64)",
+    "ALTER TABLE runs ADD COLUMN IF NOT EXISTS climatology_hash CHAR(64)",
     """
     CREATE UNIQUE INDEX IF NOT EXISTS runs_run_fingerprint_unique_idx
     ON runs (run_fingerprint)
     WHERE run_fingerprint IS NOT NULL
     """,
+    "CREATE INDEX IF NOT EXISTS runs_climatology_hash_idx ON runs (climatology_hash)",
     """
     CREATE TABLE IF NOT EXISTS points (
         point_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -189,7 +192,7 @@ _SCHEMA_STATEMENTS = (
 _RUN_INSERT = """
 INSERT INTO runs (
     run_id, run_fingerprint, source_path, original_source_path, source_sha256,
-    source_checksum_algorithm, variable, dtype, baseline_start, baseline_end,
+    source_checksum_algorithm, climatology_hash, variable, dtype, baseline_start, baseline_end,
     percentile, smooth_window_hours, smooth_min_periods,
     sampling_window_half_width_days, same_hour_smoothing, calendar_mode,
     min_duration_hours, max_internal_gap_hours, join_gap_hours, time_dimension,
@@ -199,7 +202,7 @@ INSERT INTO runs (
 ) VALUES (
     %(run_id)s, %(run_fingerprint)s, %(source_path)s, %(original_source_path)s,
     %(source_sha256)s,
-    %(source_checksum_algorithm)s, %(variable)s, %(dtype)s, %(baseline_start)s,
+    %(source_checksum_algorithm)s, %(climatology_hash)s, %(variable)s, %(dtype)s, %(baseline_start)s,
     %(baseline_end)s, %(percentile)s, %(smooth_window_hours)s,
     %(smooth_min_periods)s, %(sampling_window_half_width_days)s,
     %(same_hour_smoothing)s, %(calendar_mode)s, %(min_duration_hours)s,
@@ -253,9 +256,9 @@ def persist_detection_result(
 ) -> UUID:
     """Persist one completed detection result and return its new run ID.
 
-    The source NetCDF must still be available because its SHA-256 checksum is
-    calculated at persistence time. This operation stores only run metadata,
-    spatial identities, and sparse event rows.
+    CUDAHeat result metadata supplies the raw-source SHA-256 when available;
+    legacy results are checksummed at persistence time. This operation stores
+    only run metadata, spatial identities, and sparse event rows.
     """
     if not isinstance(result, EventDetectionResult):
         raise TypeError("result must be an EventDetectionResult")
@@ -308,10 +311,13 @@ def _run_row(
     grid_fingerprint: str,
 ) -> dict[str, Any]:
     metadata = _json_safe(result.metadata)
-    source_path = metadata.get("source_path")
-    if not isinstance(source_path, str) or not source_path:
+    active_source_path = metadata.get("source_path")
+    if not isinstance(active_source_path, str) or not active_source_path:
         raise ValueError("result metadata must contain a source_path for checksum persistence")
-    checksum = _sha256_file(source_path)
+    source_path = metadata.get("original_source_path") or active_source_path
+    if not isinstance(source_path, str) or not source_path:
+        raise ValueError("result metadata original_source_path must be a non-empty path when supplied")
+    checksum = _metadata_sha256(metadata) or _sha256_file(source_path)
     baseline_start, baseline_end = _baseline_years(metadata.get("baseline"))
     return {
         "run_id": run_id,
@@ -320,6 +326,7 @@ def _run_row(
         "original_source_path": metadata.get("original_source_path"),
         "source_sha256": checksum,
         "source_checksum_algorithm": "sha256",
+        "climatology_hash": _optional_sha256(metadata.get("climatology_hash")),
         "variable": _required_text(metadata, "variable"),
         "dtype": metadata.get("dtype"),
         "baseline_start": baseline_start,
@@ -480,6 +487,25 @@ def _sha256_file(path: str | Path) -> str:
     return digest.hexdigest()
 
 
+def _metadata_sha256(metadata: Mapping[str, Any]) -> str | None:
+    algorithm = metadata.get("source_checksum_algorithm")
+    if algorithm not in (None, "sha256"):
+        raise ValueError("only SHA-256 source checksums can be persisted")
+    return _optional_sha256(metadata.get("source_sha256"))
+
+
+def _optional_sha256(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value) != 64:
+        raise ValueError("SHA-256 values must be 64-character hexadecimal strings")
+    try:
+        int(value, 16)
+    except ValueError as exc:
+        raise ValueError("SHA-256 values must be hexadecimal strings") from exc
+    return value.lower()
+
+
 def _run_fingerprint(
     metadata: Mapping[str, Any], source_sha256: str, grid_fingerprint: str
 ) -> str:
@@ -494,6 +520,7 @@ def _run_fingerprint(
         "sampling_window_half_width_days",
         "same_hour_smoothing",
         "calendar_mode",
+        "climatology_hash",
         "min_duration_hours",
         "max_internal_gap_hours",
         "join_gap_hours",

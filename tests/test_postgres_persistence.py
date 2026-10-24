@@ -125,3 +125,32 @@ def test_sparse_result_becomes_run_point_and_event_records(tmp_path):
         (1, 1, 3, 2),
         (2, 3, 6, 3),
     ]
+
+
+def test_persistence_uses_result_source_and_climatology_hashes(tmp_path):
+    raw_source = tmp_path / "sst.nc"
+    raw_source.write_bytes(b"raw source")
+    optimized_source = tmp_path / "sst.cudaheat.nc"
+    optimized_source.write_bytes(b"derived source")
+    result = _result(optimized_source)
+    raw_sha256 = sha256(raw_source.read_bytes()).hexdigest()
+    climatology_hash = "C" * 64
+    result.metadata.update(
+        {
+            "original_source_path": str(raw_source),
+            "source_sha256": raw_sha256,
+            "source_checksum_algorithm": "sha256",
+            "climatology_hash": climatology_hash,
+        }
+    )
+
+    run = _run_row(result, uuid4(), _Jsonb, "d" * 64)
+
+    assert run["source_path"] == str(raw_source)
+    assert run["source_sha256"] == raw_sha256
+    assert run["climatology_hash"] == climatology_hash.lower()
+    assert run["metadata"].value["climatology_hash"] == climatology_hash
+
+    result.metadata["climatology_hash"] = "D" * 64
+    changed = _run_row(result, uuid4(), _Jsonb, "d" * 64)
+    assert changed["run_fingerprint"] != run["run_fingerprint"]

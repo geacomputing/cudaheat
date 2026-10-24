@@ -1,85 +1,95 @@
-"""Detect contiguous threshold-exceedance events in an hourly SST NetCDF file."""
+"""Run a small parameter sweep and persist each CUDAHeat catalogue."""
 
 from __future__ import annotations
 
-from itertools import product
-
+import argparse
+from pathlib import Path
 import time
 
-import cupy as cp
-import matplotlib.pyplot as plt
-
 from cudaheat import CUDAHeat, DuplicateRunError, load_postgres_config, persist_detection_result
-from cudaheat.preprocessing import optimize_netcdf
 
 
-#import matplotlib
-#matplotlib.use("qtagg")
-#import matplotlib.pyplot as plt
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_SOURCE = Path("/home/user/Documents/PhD.cy/lazy_loading/cudaHeat/sst_8_years.nc")
+DEFAULT_POSTGRES_CONFIG = PROJECT_ROOT / "config/postgres.ini"
 
-#PATH = "/home/user/Documents/PhD.cy/lazy_loading/Python.Scripts/sst_7_years.nc"
-#PATH = "/home/user/Documents/PhD.cy/lazy_loading/cudaHeat/sst_8_years.nc"
-PATH = "/home/user/Documents/Gea/cudaheat/benchmarks/extend_NETCDF_create40_years_timespan/sst_40_years.nc"
+# Ordered so a short test run varies gap/join settings immediately. All share
+# the same climatology configuration and therefore reuse one Zarr product.
+TEST_CONFIGURATIONS = (
+    (120, 0, 0),
+    (120, 3, 12),
+    (120, 6, 24),
+    (120, 12, 48),
+    (120, 4, 48),
+    (120, 5, 48),
+    (120, 7, 48),
+    (120, 8, 48),
+    (120, 9, 48),
+    (120, 10, 48),
+    (120, 11, 48),
+)
 
-if False: 
-    report = optimize_netcdf(
-        PATH, 
-        "/home/user/Documents/Gea/cudaheat/benchmarks/extend_NETCDF_create40_years_timespan/sst_40yrs_optimzed.nc",
-        variable="analysed_sst",
-    )
-    print(report)
+
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--limit", type=int, default=100, help="number of test runs (default: 100)")
+    parser.add_argument("--offset", type=int, default=0, help="first configuration index (default: 0)")
+    parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
+    parser.add_argument("--postgres-config", type=Path, default=DEFAULT_POSTGRES_CONFIG)
+    arguments = parser.parse_args()
+    if arguments.limit < 1 or arguments.offset < 0:
+        parser.error("--limit must be positive and --offset must be non-negative")
+    if not arguments.source.is_file():
+        parser.error(f"source NetCDF does not exist: {arguments.source}")
+    return arguments
 
 
+def main() -> None:
+    arguments = parse_arguments()
+    configurations = TEST_CONFIGURATIONS[arguments.offset : arguments.offset + arguments.limit]
+    if not configurations:
+        raise ValueError("--offset is beyond the available test configurations")
 
+    postgres = load_postgres_config(arguments.postgres_config)
+    print(f"Running {len(configurations)} parametric configurations from raw input: {arguments.source}")
 
-
-if True:
-    final = "/home/user/Documents/Gea/cudaheat/examples/sst_cudaheat.nc"
-    config = load_postgres_config(
-        "/home/user/Documents/Gea/cudaheat/config/postgres.ini"
-    )
-
-    # Fill the missing cells in the max-internal-gap × join-gap sensitivity grid.
-    missing_configurations = tuple(
-        product((1, 2, 4, 8, 16, 24, 36, 48), (3, 6, 12, 24, 48, 72))
-    )
-
-    for number, (max_internal_gap_hours, join_gap_hours) in enumerate(
-        missing_configurations, start=1
-    ):
-        t0 = time.perf_counter()
+    for number, (minimum_duration, internal_gap, join_gap) in enumerate(configurations, start=1):
+        started = time.perf_counter()
         try:
+            # Pass only the raw input. CUDAHeat handles central optimized-NetCDF
+            # and climatology-Zarr discovery, validation, creation, and reuse.
             with CUDAHeat(
-                final,
+                arguments.source,
                 variable="analysed_sst",
                 timing_logging=False,
-                input_optimization="auto",
                 batch_size="guess",
-            ) as hw:
-                result = hw.detect(
+            ) as heat:
+                result = heat.detect(
                     baseline=(2019, 2023),
-                    percentile=0.9,
-                    min_duration_hours=120,
-                    max_internal_gap_hours=max_internal_gap_hours,
-                    join_gap_hours=join_gap_hours,
+                    percentile=0.90,
+                    min_duration_hours=minimum_duration,
+                    max_internal_gap_hours=internal_gap,
+                    join_gap_hours=join_gap,
                 )
-
-            run_id = persist_detection_result(result, config)
+                batch_size = heat.batch_size
+            detection_seconds = time.perf_counter() - started
+            run_id = persist_detection_result(result, postgres)
         except DuplicateRunError as exc:
-            print(f"[{number:02d}/{len(missing_configurations)}] Already saved: {exc.existing_run_id}")
+            print(f"[{number}/{len(configurations)}] duplicate run: {exc.existing_run_id}")
+            continue
         except Exception as exc:
-            print(
-                f"[{number:02d}/{len(missing_configurations)}] "
-                f"FAILED gap={max_internal_gap_hours}, join={join_gap_hours}: {exc}"
-            )
-        else:
-            elapsed = time.perf_counter() - t0
-            print(
-                f"[{number:02d}/{len(missing_configurations)}] saved {run_id} "
-                f"gap={max_internal_gap_hours}, join={join_gap_hours} "
-                f"({elapsed:.1f} s; batch={hw.batch_size})"
-            )
-        finally:
-            cp.cuda.Stream.null.synchronize()
-            plt.close("all")
+            print(f"[{number}/{len(configurations)}] FAILED: {exc}")
+            continue
 
+        total_seconds = time.perf_counter() - started
+        print(
+            f"[{number}/{len(configurations)}] saved {run_id} | "
+            f"min={minimum_duration}h gap={internal_gap}h join={join_gap}h | "
+            f"detect={detection_seconds:.1f}s total={total_seconds:.1f}s | "
+            f"batch={batch_size} zarr={result.metadata['climatology_cache_status']} "
+            f"clim={result.metadata['climatology_hash']}"
+        )
+
+
+if __name__ == "__main__":
+    main()
