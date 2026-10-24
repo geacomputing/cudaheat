@@ -69,16 +69,16 @@ if True:
     plt.close("all")
 
 
-    for pts in np.arange(0, len(result.data.event), 10000):
+    for pts in np.arange(0, len(result.data.event), 50000):
     
         series = result.event_timeseries(event_id=int(pts+1), pad_hours=0)
-        fig = plt.figure()
+        fig = plt.figure(figsize=(10, 7))
         ax = fig.add_subplot(111)
         series.climatology.plot(ax=ax, label="climatology")
         series.sst.plot(ax=ax, label="sst")
         series.threshold.plot(ax=ax, label="threshold")
 
         text4title=f"Lat, lon = ({series.latitude.values}, {series.longitude.values}) - pctl: {result.metadata["percentile"]}\nmin_duration: {result.metadata["min_duration_hours"]} , max internal gaps: {result.metadata["max_internal_gap_hours"]}"
-        
+        plt.title(text4title)
         plt.legend()
         plt.plot()
