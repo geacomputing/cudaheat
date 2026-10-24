@@ -10,6 +10,13 @@ from .preprocessing import (
     optimize_netcdf,
     prepare_netcdf_input,
 )
+from .postgres import (
+    DuplicateRunError,
+    PostgresConfig,
+    create_postgres_schema,
+    load_postgres_config,
+    persist_detection_result,
+)
 from .validation import ValidationResult, validate_cpu_gpu
 
 __all__ = [
@@ -17,17 +24,22 @@ __all__ = [
     "CUDAHeat",
     "CUDAHeatError",
     "CUDAUnavailableError",
+    "DuplicateRunError",
     "EventDetectionResult",
     "InsufficientVRAMError",
     "PipelineResult",
     "PreparedNetCDF",
     "PreprocessingReport",
+    "PostgresConfig",
     "ValidationResult",
     "validate_cpu_gpu",
     "choose_chunk_shape",
     "inspect_netcdf",
     "optimize_netcdf",
     "prepare_netcdf_input",
+    "create_postgres_schema",
+    "load_postgres_config",
+    "persist_detection_result",
 ]
 
 __version__ = "0.1.0"

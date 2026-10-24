@@ -8,6 +8,7 @@ and writes one compact NetCDF file suitable for CUDAHeat's spatial batching.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 import math
 import os
 from pathlib import Path
@@ -21,11 +22,14 @@ import h5py
 import numpy as np
 import xarray as xr
 
+from .cache_paths import optimized_netcdf_path
 from .io import is_optimized_point_layout, resolve_spatial_dimensions, resolve_time_dim
 
 
 DEFAULT_TARGET_CHUNK_BYTES = 4 * 1024 * 1024
 """Default raw HDF5 chunk target: four MiB before compression."""
+
+_PREPROCESSING_SCHEMA_VERSION = 2
 
 _MIB = 1024 * 1024
 _PACKING_ATTRIBUTES = frozenset(
@@ -125,11 +129,14 @@ class PreparedNetCDF:
     was_already_optimized: bool
     reused_cached_optimization: bool
     report: PreprocessingReport | None = None
+    source_sha256: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "source_path": str(self.source_path),
             "active_path": str(self.active_path),
+            "source_sha256": self.source_sha256,
+            "source_checksum_algorithm": "sha256",
             "was_already_optimized": self.was_already_optimized,
             "reused_cached_optimization": self.reused_cached_optimization,
             "report": None if self.report is None else {
@@ -200,23 +207,49 @@ def prepare_netcdf_input(
     source = Path(input_path)
     if not source.is_file():
         raise FileNotFoundError(f"NetCDF input does not exist: {source}")
+    source_sha256 = _sha256_file(source)
     if _is_cudaheat_point_file(source, variable=variable, time_dim=time_dim):
         return PreparedNetCDF(
-            source, source, was_already_optimized=True, reused_cached_optimization=False
+            source,
+            source,
+            was_already_optimized=True,
+            reused_cached_optimization=False,
+            source_sha256=source_sha256,
         )
     if strategy == "skip":
         return PreparedNetCDF(
-            source, source, was_already_optimized=False, reused_cached_optimization=False
+            source,
+            source,
+            was_already_optimized=False,
+            reused_cached_optimization=False,
+            source_sha256=source_sha256,
         )
     if strategy == "require":
         raise ValueError(
             "input_optimization='require' needs an optimized CUDAHeat time × point NetCDF"
         )
 
-    destination = _automatic_optimized_path(source)
-    if _cached_optimization_matches(destination, source, variable=variable, time_dim=time_dim):
+    if source.stem.endswith(".cudaheat"):
+        raise ValueError(
+            "input is named like a CUDAHeat-derived file but is not a valid CUDAHeat point layout; "
+            "provide the original NetCDF instead"
+        )
+    destination = _automatic_optimized_path(source, source_sha256)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if _cached_optimization_matches(
+        destination,
+        source,
+        source_sha256=source_sha256,
+        variable=variable,
+        dtype=np.dtype(dtype),
+        time_dim=time_dim,
+    ):
         return PreparedNetCDF(
-            source, destination, was_already_optimized=False, reused_cached_optimization=True
+            source,
+            destination,
+            was_already_optimized=False,
+            reused_cached_optimization=True,
+            source_sha256=source_sha256,
         )
     report = optimize_netcdf(
         source,
@@ -225,6 +258,7 @@ def prepare_netcdf_input(
         dtype=dtype,
         time_dim=time_dim,
         overwrite=destination.exists(),
+        _source_sha256=source_sha256,
     )
     return PreparedNetCDF(
         source,
@@ -232,6 +266,7 @@ def prepare_netcdf_input(
         was_already_optimized=False,
         reused_cached_optimization=False,
         report=report,
+        source_sha256=source_sha256,
     )
 
 
@@ -321,6 +356,7 @@ def optimize_netcdf(
     compression: Literal["auto", "gzip", "none"] | None = "auto",
     compression_level: int = 1,
     overwrite: bool = False,
+    _source_sha256: str | None = None,
 ) -> PreprocessingReport:
     """Create one compact, physically rechunked ``time × point`` NetCDF.
 
@@ -345,6 +381,8 @@ def optimize_netcdf(
         raise ValueError("dtype must be a floating-point type so missing values remain representable")
     if compression_level < 0 or compression_level > 9:
         raise ValueError("compression_level must be between 0 and 9")
+    source_sha256 = _source_sha256 or _sha256_file(source_path)
+    source_signature = _source_stat_signature(source_path)
 
     inspection = inspect_netcdf(source_path, variable=variable, time_dim=time_dim)
     nlat, nlon = inspection.grid_shape
@@ -408,6 +446,7 @@ def optimize_netcdf(
             compression=resolved_compression,
             compression_level=compression_level,
             source_path=source_path,
+            source_sha256=source_sha256,
         )
         _validate_output(
             temporary,
@@ -417,6 +456,8 @@ def optimize_netcdf(
             expected_chunks=(time_chunk, point_chunk),
             expected_points=int(retained_flat.size),
         )
+        if _source_stat_signature(source_path) != source_signature:
+            raise RuntimeError("source NetCDF changed while CUDAHeat was optimizing it")
         os.replace(temporary, destination)
     except Exception:
         if temporary.exists():
@@ -485,6 +526,7 @@ def _write_optimized_file(
     compression: str | None,
     compression_level: int,
     source_path: Path,
+    source_sha256: str,
 ) -> float:
     ntime = inspection.ntime
     npoints = int(retained_flat.size)
@@ -497,6 +539,7 @@ def _write_optimized_file(
         target.attrs.update(
             {
                 "cudaheat_preprocessed": "true",
+                "cudaheat_preprocessing_schema_version": _PREPROCESSING_SCHEMA_VERSION,
                 "cudaheat_layout": "time, point",
                 "cudaheat_flattening": "C-order: original_flat_index = lat_index * nlon + lon_index",
                 "cudaheat_original_time_dimension": inspection.time_dim,
@@ -508,6 +551,10 @@ def _write_optimized_file(
                 "cudaheat_source_path": str(source_path.resolve()),
                 "cudaheat_source_size_bytes": int(source_path.stat().st_size),
                 "cudaheat_source_mtime_ns": int(source_path.stat().st_mtime_ns),
+                "cudaheat_source_sha256": source_sha256,
+                "cudaheat_source_checksum_algorithm": "sha256",
+                "cudaheat_source_variable": variable,
+                "cudaheat_output_dtype": output_dtype.name,
             }
         )
         _write_time_coordinate(target, raw, inspection.time_dim)
@@ -660,10 +707,9 @@ def _validate_output(
             raise RuntimeError("validation failed: CUDAHeat preprocessing marker is absent")
 
 
-def _automatic_optimized_path(source: Path) -> Path:
-    """Return the non-destructive sibling filename used by auto preparation."""
-    suffix = source.suffix or ".nc"
-    return source.with_name(f"{source.stem}.cudaheat{suffix}")
+def _automatic_optimized_path(source: Path, source_sha256: str) -> Path:
+    """Return the central non-destructive cache path used by auto preparation."""
+    return optimized_netcdf_path(source, source_sha256)
 
 
 def _is_cudaheat_point_file(path: Path, *, variable: str, time_dim: str | None) -> bool:
@@ -676,7 +722,13 @@ def _is_cudaheat_point_file(path: Path, *, variable: str, time_dim: str | None) 
 
 
 def _cached_optimization_matches(
-    cached: Path, source: Path, *, variable: str, time_dim: str | None
+    cached: Path,
+    source: Path,
+    *,
+    source_sha256: str,
+    variable: str,
+    dtype: np.dtype[Any],
+    time_dim: str | None,
 ) -> bool:
     """Return whether a sibling optimization is both valid and from this source revision."""
     if not cached.is_file():
@@ -692,13 +744,36 @@ def _cached_optimization_matches(
             attrs = dataset.attrs
             return (
                 attrs.get("cudaheat_preprocessed") == "true"
+                and attrs.get("cudaheat_preprocessing_schema_version")
+                == _PREPROCESSING_SCHEMA_VERSION
                 and attrs.get("cudaheat_source_path") == str(source.resolve())
                 and int(attrs.get("cudaheat_source_size_bytes", -1)) == source_stat.st_size
                 and int(attrs.get("cudaheat_source_mtime_ns", -1)) == source_stat.st_mtime_ns
+                and attrs.get("cudaheat_source_sha256") == source_sha256
+                and attrs.get("cudaheat_source_checksum_algorithm") == "sha256"
+                and attrs.get("cudaheat_source_variable") == variable
+                and attrs.get("cudaheat_output_dtype") == dtype.name
             )
     except (OSError, TypeError, ValueError):
         # A damaged or legacy sibling cache is simply rebuilt by ``auto``.
         return False
+
+
+def _source_stat_signature(path: Path) -> tuple[int, int]:
+    stat = path.stat()
+    return (int(stat.st_size), int(stat.st_mtime_ns))
+
+
+def _sha256_file(path: Path) -> str:
+    """Return a stable content fingerprint, refusing a file changed mid-read."""
+    before = _source_stat_signature(path)
+    digest = sha256()
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(8 * 1024 * 1024), b""):
+            digest.update(block)
+    if _source_stat_signature(path) != before:
+        raise RuntimeError(f"source NetCDF changed while its checksum was being calculated: {path}")
+    return digest.hexdigest()
 
 
 def _source_chunks(data: xr.DataArray) -> tuple[int, ...] | None:

@@ -13,7 +13,6 @@ import numpy as np
 import xarray as xr
 
 from .climatology import (
-    CALENDAR_MODE_DAY_OF_YEAR,
     CALENDAR_MODE_MONTH_DAY_HOUR,
     HOURS_PER_LEAP_YEAR,
     PreEventFields,
@@ -23,6 +22,7 @@ from .climatology import (
     hourly_climatology_index,
     validate_contiguous_hourly_time,
 )
+from .climatology_cache import ClimatologyCache, open_climatology_cache
 from .detection import EventRuns, detect_events
 from .exceptions import InsufficientVRAMError
 from .io import NetCDFReader, is_optimized_point_layout
@@ -185,6 +185,7 @@ class CUDAHeat:
         self.input_optimization = input_optimization
         self.original_source_path = str(source) if not isinstance(source, xr.Dataset) else None
         self.input_preparation: PreparedNetCDF | None = None
+        self.source_sha256: str | None = None
         self.source_path = self.original_source_path
         self._owns_dataset = not isinstance(source, xr.Dataset)
         self._reader: NetCDFReader | None = None
@@ -198,6 +199,7 @@ class CUDAHeat:
                 strategy=self.input_optimization,
                 time_dim=time_dim,
             )
+            self.source_sha256 = self.input_preparation.source_sha256
             self.source_path = str(self.input_preparation.active_path)
             self._reader = NetCDFReader(
                 self.input_preparation.active_path,
@@ -236,6 +238,7 @@ class CUDAHeat:
         if self._reader is not None:
             self._stacked = self._reader.rechunk_stacked(self._stacked)
         all_point_count = int(self._stacked.sizes["point"])
+        self._full_point_selection = point_indices is None
         self.point_indices = self._normalise_point_indices(point_indices, all_point_count)
         if point_indices is not None:
             # Preserve a contiguous slice for Dask-backed input.  Replacing it
@@ -659,6 +662,18 @@ class CUDAHeat:
         resolved_smooth_min_periods = self._resolve_smooth_min_periods(
             smooth_window_hours, smooth_min_periods
         )
+        climatology_cache = self._open_climatology_cache(
+            baseline=baseline,
+            percentile=percentile,
+            smooth_window_hours=smooth_window_hours,
+            smooth_min_periods=resolved_smooth_min_periods,
+            climatology_nbins=climatology_nbins,
+        )
+        transferred_fields = retained
+        if climatology_cache is not None and climatology_cache.needs_write:
+            # The new cache is populated directly from the existing GPU cycles;
+            # these two compact fields are not exposed unless requested by the caller.
+            transferred_fields = retained | {"climatology", "threshold_cycle"}
         retained_buffers = {
             name: np.empty((climatology_nbins, self.npoints), dtype=self.dtype)
             for name in retained
@@ -668,72 +683,87 @@ class CUDAHeat:
         point_start = 0
         active_batch_size = self.batch_size
 
-        while point_start < self.npoints:
-            current_size = min(active_batch_size, self.npoints - point_start)
-            retries = 0
-            while True:
-                point_stop = point_start + current_size
-                cpu_values, host_read_seconds, host_prepare_seconds = (
-                    self._load_spatial_batch_profiled(point_start, point_stop)
-                )
-                try:
-                    output, batch_telemetry = self._execute_gpu_detection_batch(
-                        cpu_values,
-                        point_start,
-                        point_stop,
-                        rows,
-                        percentile,
-                        smooth_window_hours,
-                        resolved_smooth_min_periods,
-                        climatology_nbins,
-                        min_duration_hours,
-                        max_internal_gap_hours,
-                        join_gap_hours,
-                        retries,
-                        host_read_seconds,
-                        host_prepare_seconds,
-                        retained,
+        try:
+            while point_start < self.npoints:
+                current_size = min(active_batch_size, self.npoints - point_start)
+                retries = 0
+                while True:
+                    point_stop = point_start + current_size
+                    cpu_values, host_read_seconds, host_prepare_seconds = (
+                        self._load_spatial_batch_profiled(point_start, point_stop)
                     )
-                except Exception as exc:
+                    cached_cycles = (
+                        None
+                        if climatology_cache is None or climatology_cache.needs_write
+                        else climatology_cache.read_batch(point_start, point_stop)
+                    )
+                    try:
+                        output, batch_telemetry = self._execute_gpu_detection_batch(
+                            cpu_values,
+                            point_start,
+                            point_stop,
+                            rows,
+                            percentile,
+                            smooth_window_hours,
+                            resolved_smooth_min_periods,
+                            climatology_nbins,
+                            min_duration_hours,
+                            max_internal_gap_hours,
+                            join_gap_hours,
+                            retries,
+                            host_read_seconds,
+                            host_prepare_seconds,
+                            transferred_fields,
+                            cached_cycles,
+                        )
+                    except Exception as exc:
+                        del cpu_values
+                        if not self._is_gpu_oom(exc):
+                            raise
+                        release_gpu_memory(self.device_id)
+                        if current_size == 1:
+                            raise InsufficientVRAMError(
+                                self._single_series_message(self.batch_estimate)
+                            ) from exc
+                        retries += 1
+                        current_size = reduced_batch_size(current_size)
+                        active_batch_size = current_size
+                        logger.warning(
+                            "GPU OOM during detection for points %d:%d; retrying with %d points (retry %d)",
+                            point_start,
+                            point_stop,
+                            current_size,
+                            retries,
+                        )
+                        continue
+                    assembly_start = perf_counter()
+                    event_parts.append(
+                        EventRuns(
+                            point=np.asarray(output.events.point, dtype=np.intp) + point_start,
+                            start=np.asarray(output.events.start, dtype=np.intp),
+                            stop=np.asarray(output.events.stop, dtype=np.intp),
+                            duration=np.asarray(output.events.duration, dtype=np.intp),
+                        )
+                    )
+                    if climatology_cache is not None and climatology_cache.needs_write:
+                        climatology_cache.write_batch(point_start, point_stop, output.fields)
+                    self._store_batch(output.fields, retained_buffers, point_start, point_stop)
                     del cpu_values
-                    if not self._is_gpu_oom(exc):
-                        raise
-                    release_gpu_memory(self.device_id)
-                    if current_size == 1:
-                        raise InsufficientVRAMError(
-                            self._single_series_message(self.batch_estimate)
-                        ) from exc
-                    retries += 1
-                    current_size = reduced_batch_size(current_size)
-                    active_batch_size = current_size
-                    logger.warning(
-                        "GPU OOM during detection for points %d:%d; retrying with %d points (retry %d)",
-                        point_start,
-                        point_stop,
-                        current_size,
-                        retries,
+                    telemetry.append(
+                        replace(
+                            batch_telemetry,
+                            result_assembly_seconds=perf_counter() - assembly_start,
+                        )
                     )
-                    continue
-                assembly_start = perf_counter()
-                event_parts.append(
-                    EventRuns(
-                        point=np.asarray(output.events.point, dtype=np.intp) + point_start,
-                        start=np.asarray(output.events.start, dtype=np.intp),
-                        stop=np.asarray(output.events.stop, dtype=np.intp),
-                        duration=np.asarray(output.events.duration, dtype=np.intp),
-                    )
-                )
-                self._store_batch(output.fields, retained_buffers, point_start, point_stop)
-                del cpu_values
-                telemetry.append(
-                    replace(
-                        batch_telemetry,
-                        result_assembly_seconds=perf_counter() - assembly_start,
-                    )
-                )
-                del output
-                point_start = point_stop
-                break
+                    del output
+                    point_start = point_stop
+                    break
+            if climatology_cache is not None:
+                climatology_cache.commit()
+        except Exception:
+            if climatology_cache is not None:
+                climatology_cache.abort()
+            raise
 
         self.batch_size = active_batch_size
         final_assembly_start = perf_counter()
@@ -779,6 +809,17 @@ class CUDAHeat:
                 "batch_selection": "guess" if self.requested_batch_size == "guess" else "explicit",
                 "source_path": self.source_path,
                 "original_source_path": self.original_source_path,
+                "source_sha256": self.source_sha256,
+                "source_checksum_algorithm": "sha256" if self.source_sha256 else None,
+                "climatology_hash": (
+                    None if climatology_cache is None else climatology_cache.climatology_hash
+                ),
+                "climatology_cache_path": (
+                    None if climatology_cache is None else str(climatology_cache.path)
+                ),
+                "climatology_cache_status": (
+                    "not_applicable" if climatology_cache is None else climatology_cache.status
+                ),
                 "input_preparation": (
                     None if self.input_preparation is None else self.input_preparation.as_dict()
                 ),
@@ -789,6 +830,41 @@ class CUDAHeat:
         )
         self.last_detection_result = result
         return result
+
+    def _open_climatology_cache(
+        self,
+        *,
+        baseline: tuple[int, int] | None,
+        percentile: float,
+        smooth_window_hours: int,
+        smooth_min_periods: int,
+        climatology_nbins: int,
+    ) -> ClimatologyCache | None:
+        """Open a transparent sibling cache when this is a complete path input."""
+        prepared = self.input_preparation
+        if (
+            prepared is None
+            or self.source_sha256 is None
+            or not self._optimized_point_layout
+            or not self._full_point_selection
+        ):
+            return None
+        return open_climatology_cache(
+            prepared.source_path,
+            source_sha256=self.source_sha256,
+            variable=self.variable,
+            dtype=self.dtype,
+            baseline=baseline,
+            percentile=percentile,
+            smooth_window_hours=smooth_window_hours,
+            smooth_min_periods=smooth_min_periods,
+            sampling_window_half_width_days=_HOBDAY_SAMPLING_WINDOW_HALF_WIDTH_DAYS,
+            same_hour_smoothing=True,
+            calendar_mode=self.calendar_mode,
+            nbins=climatology_nbins,
+            point_values=self.point_indices,
+            point_coordinates=self._point_coordinates,
+        )
 
     def _execute_gpu_batch(
         self,
@@ -901,6 +977,7 @@ class CUDAHeat:
         host_read_seconds: float,
         host_prepare_seconds: float,
         retained: frozenset[str],
+        cached_cycles: dict[str, np.ndarray] | None = None,
     ) -> tuple[EventBatchOutput, BatchTelemetry]:
         """Preprocess and detect one batch, retaining requested compact cycles."""
         cp = cupy()
@@ -924,27 +1001,36 @@ class CUDAHeat:
             )
             metadata_start = perf_counter()
             gpu_bins = cp.asarray(self._bins)
-            gpu_rows = cp.asarray(rows)
+            gpu_rows = None if cached_cycles is not None else cp.asarray(rows)
             cp.cuda.get_current_stream().synchronize()
             gpu_metadata_transfer_seconds = perf_counter() - metadata_start
             event_start = cp.cuda.Event()
             event_end = cp.cuda.Event()
             event_start.record()
-            gpu_fields = gpu_pre_event_fields(
-                gpu_values,
-                gpu_bins,
-                gpu_rows,
-                percentile=percentile,
-                smooth_window_hours=smooth_window_hours,
-                smooth_min_periods=smooth_min_periods,
-                nbins=climatology_nbins,
-                calendar_mode=self.calendar_mode,
-                sampling_window_half_width_days=_HOBDAY_SAMPLING_WINDOW_HALF_WIDTH_DAYS,
-                smooth_same_hour=True,
-            )
+            gpu_fields: PreEventFields | None = None
+            gpu_threshold_cycle = None
+            if cached_cycles is None:
+                if gpu_rows is None:  # pragma: no cover - defensive narrowing guard
+                    raise RuntimeError("baseline rows are required to compute a new climatology cache")
+                gpu_fields = gpu_pre_event_fields(
+                    gpu_values,
+                    gpu_bins,
+                    gpu_rows,
+                    percentile=percentile,
+                    smooth_window_hours=smooth_window_hours,
+                    smooth_min_periods=smooth_min_periods,
+                    nbins=climatology_nbins,
+                    calendar_mode=self.calendar_mode,
+                    sampling_window_half_width_days=_HOBDAY_SAMPLING_WINDOW_HALF_WIDTH_DAYS,
+                    smooth_same_hour=True,
+                )
+                threshold = gpu_fields.threshold
+            else:
+                gpu_threshold_cycle = cp.asarray(cached_cycles["threshold_cycle"])
+                threshold = gpu_threshold_cycle[gpu_bins]
             detected = detect_events(
                 gpu_values,
-                gpu_fields.threshold,
+                threshold,
                 min_duration_hours=min_duration_hours,
                 max_internal_gap_hours=max_internal_gap_hours,
                 join_gap_hours=join_gap_hours,
@@ -962,9 +1048,14 @@ class CUDAHeat:
                 stop=cp.asnumpy(detected.events.stop),
                 duration=cp.asnumpy(detected.events.duration),
             )
-            retained_fields = {
-                name: cp.asnumpy(getattr(gpu_fields, name)) for name in retained
-            }
+            if gpu_fields is None:
+                retained_fields = {
+                    name: np.array(cached_cycles[name], copy=True) for name in retained
+                }
+            else:
+                retained_fields = {
+                    name: cp.asnumpy(getattr(gpu_fields, name)) for name in retained
+                }
             cp.cuda.get_current_stream().synchronize()
             transfer_from_device = perf_counter() - transfer_start
             free_after, _ = cp.cuda.runtime.memGetInfo()
@@ -991,7 +1082,13 @@ class CUDAHeat:
                 gpu_allocation_seconds=gpu_allocation_seconds,
                 gpu_metadata_transfer_seconds=gpu_metadata_transfer_seconds,
             )
-            del detected, gpu_fields, gpu_values, gpu_bins, gpu_rows
+            del detected, threshold, gpu_values, gpu_bins
+            if gpu_fields is not None:
+                del gpu_fields
+            if gpu_threshold_cycle is not None:
+                del gpu_threshold_cycle
+            if gpu_rows is not None:
+                del gpu_rows
             release_gpu_memory(self.device_id)
             return (
                 EventBatchOutput(point_start, point_stop, events, retained_fields, telemetry),
@@ -1034,7 +1131,7 @@ class CUDAHeat:
         fields: dict[str, np.ndarray], buffers: dict[str, np.ndarray], start: int, stop: int
     ) -> None:
         for name, values in fields.items():
-            if name != "exceedance_count":
+            if name in buffers:
                 buffers[name][..., start:stop] = values
 
     def _to_dataset(

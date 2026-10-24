@@ -39,6 +39,32 @@ CUDAHeat still transfers complete time series and uses spatial batches only.
 
 Install the CuPy extra matching the installed CUDA driver. Base-package imports work without CuPy, but `CUDAHeat` requires an NVIDIA CUDA device.
 
+## Optional PostgreSQL event catalogue
+
+Install the optional driver, copy `config/postgres.example.ini` to the ignored
+`config/postgres.ini`, and set its configured password environment variable:
+
+```bash
+pip install -e '.[postgres]'
+cp config/postgres.example.ini config/postgres.ini
+export CUDAHEAT_POSTGRES_PASSWORD='...'
+```
+
+The password is never stored in the configuration file. An existing standard
+`~/.pgpass` setup may be used instead by leaving that environment variable
+unset. Persist only a completed sparse detection result; CUDAHeat does not
+store SST or climatology arrays in PostgreSQL.
+
+```python
+from cudaheat import load_postgres_config, persist_detection_result
+
+result = hw.detect(baseline=(1982, 2011))
+run_id = persist_detection_result(result, load_postgres_config())
+```
+
+An identical source checksum, spatial grid, and detection configuration is
+rejected as a duplicate run with ``DuplicateRunError``.
+
 ## Minimal use
 
 ```python
@@ -57,8 +83,14 @@ with CUDAHeat("sst.nc", variable="analysed_sst", dtype="float32", vram_safety=0.
 
 For a NetCDF path, CUDAHeat now uses `input_optimization="auto"` by default.
 It accepts an existing CUDAHeat `(time, point)` file unchanged; otherwise it
-writes and validates a sibling such as `sst.cudaheat.nc`, never overwriting the
-source file. The run metadata records both paths and the preparation result.
+writes and validates a central local cache file such as
+`.cudaheat-cache/<source-sha>/sst.cudaheat.nc`, never overwriting the source
+file. It validates this file against a SHA-256 fingerprint of the raw source.
+`detect()` also creates or reuses
+`.cudaheat-cache/<source-sha>/sst.cudaheat.clim-<hash>.zarr` for its
+climatology and threshold cycles; duration and gap controls reuse that same
+product. The run metadata records the source fingerprint, climatology hash,
+paths, and cache status. Set `CUDAHEAT_CACHE_DIR` only to relocate this cache.
 
 `batch_size="guess"` is the default. It immediately chooses the closest of
 `512`, `1024`, `1536`, or `2048` to one quarter of the VRAM-safe ceiling.

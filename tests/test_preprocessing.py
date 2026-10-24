@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import h5py
 import numpy as np
+import os
 import pytest
 import xarray as xr
 
+from cudaheat.cache_paths import derived_cache_root
 from cudaheat.io import NetCDFReader, is_optimized_point_layout
 from cudaheat.preprocessing import (
     choose_chunk_shape,
@@ -13,6 +15,11 @@ from cudaheat.preprocessing import (
     prepare_netcdf_input,
 )
 from cudaheat.result import EventDetectionResult, EventGrid
+
+
+@pytest.fixture(autouse=True)
+def _use_test_cache_directory(tmp_path, monkeypatch):
+    monkeypatch.setenv("CUDAHEAT_CACHE_DIR", str(tmp_path / ".cudaheat-cache"))
 
 
 def _source_dataset(*, dimensions: tuple[str, str, str] = ("time", "lat", "lon")) -> xr.Dataset:
@@ -163,11 +170,9 @@ def test_cudaheat_consumes_optimized_point_layout(tmp_path):
 
     source = _source_dataset()
     input_path = tmp_path / "input.nc"
-    output_path = tmp_path / "optimized.nc"
     source.to_netcdf(input_path, engine="h5netcdf")
-    optimize_netcdf(input_path, output_path, variable="sst", compression="none")
 
-    with CUDAHeat(output_path, variable="sst", vram_safety=0.90) as engine:
+    with CUDAHeat(input_path, variable="sst", vram_safety=0.90) as engine:
         assert engine._optimized_point_layout
         assert engine.npoints == 5
         result = engine.run(smooth_window_hours=24 * 3, return_fields={"mask"})
@@ -176,6 +181,27 @@ def test_cudaheat_consumes_optimized_point_layout(tmp_path):
     assert result.data["mask"].dims == ("time", "point")
     assert "original_flat_index" in result.data.coords
     assert "original_flat_index" in detection.data
+    assert detection.metadata["climatology_cache_status"] == "created"
+    cache_path = detection.metadata["climatology_cache_path"]
+    assert cache_path is not None
+    optimized = derived_cache_root() / detection.metadata["source_sha256"] / "input.cudaheat.nc"
+    assert optimized.is_file()
+    assert not input_path.with_name("input.cudaheat.nc").exists()
+
+    with CUDAHeat(input_path, variable="sst", vram_safety=0.90) as engine:
+        reused = engine.detect(smooth_window_hours=24 * 3)
+        different_detection_controls = engine.detect(
+            smooth_window_hours=24 * 3,
+            min_duration_hours=2,
+            max_internal_gap_hours=0,
+            join_gap_hours=0,
+        )
+
+    assert reused.metadata["climatology_cache_status"] == "reused"
+    assert reused.metadata["climatology_hash"] == detection.metadata["climatology_hash"]
+    assert different_detection_controls.metadata["climatology_cache_status"] == "reused"
+    assert different_detection_controls.metadata["climatology_hash"] == detection.metadata["climatology_hash"]
+    xr.testing.assert_identical(reused.data, detection.data)
 
 
 def test_auto_input_preparation_creates_then_reuses_a_validated_sibling(tmp_path):
@@ -187,9 +213,36 @@ def test_auto_input_preparation_creates_then_reuses_a_validated_sibling(tmp_path
     second = prepare_netcdf_input(input_path, variable="sst", dtype="float32")
 
     assert first.active_path != input_path
-    assert first.active_path.name == "input.cudaheat.nc"
+    assert first.active_path == derived_cache_root() / first.source_sha256 / "input.cudaheat.nc"
     assert first.active_path.is_file()
     assert first.report is not None
     assert not first.reused_cached_optimization
     assert second.active_path == first.active_path
     assert second.reused_cached_optimization
+
+
+def test_auto_input_preparation_rebuilds_when_content_changes_without_stat_change(tmp_path):
+    source = _source_dataset()
+    input_path = tmp_path / "input.nc"
+    source.to_netcdf(input_path, engine="h5netcdf")
+    first = prepare_netcdf_input(input_path, variable="sst", dtype="float32")
+    initial_stat = input_path.stat()
+
+    with h5py.File(input_path, "r+") as raw:
+        raw["sst"][0, 1, 1] += 1
+    os.utime(input_path, ns=(initial_stat.st_atime_ns, initial_stat.st_mtime_ns))
+
+    rebuilt = prepare_netcdf_input(input_path, variable="sst", dtype="float32")
+
+    assert rebuilt.active_path != first.active_path
+    assert rebuilt.report is not None
+    assert not rebuilt.reused_cached_optimization
+    assert rebuilt.source_sha256 != first.source_sha256
+
+
+def test_auto_input_preparation_refuses_cudaheat_suffix_chaining(tmp_path):
+    path = tmp_path / "input.cudaheat.nc"
+    _source_dataset().to_netcdf(path, engine="h5netcdf")
+
+    with pytest.raises(ValueError, match="CUDAHeat-derived"):
+        prepare_netcdf_input(path, variable="sst")

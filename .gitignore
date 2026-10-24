@@ -9,9 +9,16 @@ build/
 *.egg-info/
 *.nc
 *.zarr/
+/.cudaheat-cache/
 benchmark-results/
 #benchmark_results/
 validation-results/
+
+# Local PostgreSQL configuration and environment secrets
+/config/postgres.ini
+/.env
+/.env.*
+!.env.example
 
 
 # =========================================================
