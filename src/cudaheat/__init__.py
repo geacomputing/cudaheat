@@ -2,6 +2,7 @@
 
 from .core import CUDAHeat, BatchOutput, EventDetectionResult, PipelineResult
 from .exceptions import CUDAHeatError, CUDAUnavailableError, InsufficientVRAMError
+from .enrichment import EnrichmentRule, RuleContext, RuleValidationError, discover_rules, enrich
 from .preprocessing import (
     PreparedNetCDF,
     PreprocessingReport,
@@ -14,6 +15,7 @@ from .postgres import (
     DuplicateRunError,
     PostgresConfig,
     create_postgres_schema,
+    enrich_stored_run,
     load_postgres_config,
     persist_detection_result,
 )
@@ -24,6 +26,7 @@ __all__ = [
     "CUDAHeat",
     "CUDAHeatError",
     "CUDAUnavailableError",
+    "EnrichmentRule",
     "DuplicateRunError",
     "EventDetectionResult",
     "InsufficientVRAMError",
@@ -31,6 +34,8 @@ __all__ = [
     "PreparedNetCDF",
     "PreprocessingReport",
     "PostgresConfig",
+    "RuleContext",
+    "RuleValidationError",
     "ValidationResult",
     "validate_cpu_gpu",
     "choose_chunk_shape",
@@ -38,6 +43,9 @@ __all__ = [
     "optimize_netcdf",
     "prepare_netcdf_input",
     "create_postgres_schema",
+    "discover_rules",
+    "enrich",
+    "enrich_stored_run",
     "load_postgres_config",
     "persist_detection_result",
 ]

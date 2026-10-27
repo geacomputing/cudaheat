@@ -8,7 +8,6 @@ import time
 
 from cudaheat import CUDAHeat, DuplicateRunError, load_postgres_config, persist_detection_result
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE = Path("/home/user/Documents/PhD.cy/lazy_loading/cudaHeat/sst_8_years.nc")
 DEFAULT_POSTGRES_CONFIG = PROJECT_ROOT / "config/postgres.ini"
@@ -16,7 +15,7 @@ DEFAULT_POSTGRES_CONFIG = PROJECT_ROOT / "config/postgres.ini"
 # Ordered so a short test run varies gap/join settings immediately. All share
 # the same climatology configuration and therefore reuse one Zarr product.
 TEST_CONFIGURATIONS = (
-    (120, 0, 0),
+    (120, 14, 24),
     (120, 3, 12),
     (120, 6, 24),
     (120, 12, 48),
@@ -70,10 +69,14 @@ def main() -> None:
                     min_duration_hours=minimum_duration,
                     max_internal_gap_hours=internal_gap,
                     join_gap_hours=join_gap,
+                    enrich=True,
                 )
                 batch_size = heat.batch_size
-            detection_seconds = time.perf_counter() - started
+
+            detection_enrichment_seconds = time.perf_counter() - started
+            gpu_enrichment_seconds = float(result.metadata["enrichment_timing"]["gpu_seconds"])
             run_id = persist_detection_result(result, postgres)
+
         except DuplicateRunError as exc:
             print(f"[{number}/{len(configurations)}] duplicate run: {exc.existing_run_id}")
             continue
@@ -85,7 +88,8 @@ def main() -> None:
         print(
             f"[{number}/{len(configurations)}] saved {run_id} | "
             f"min={minimum_duration}h gap={internal_gap}h join={join_gap}h | "
-            f"detect={detection_seconds:.1f}s total={total_seconds:.1f}s | "
+            f"detect+enrich={detection_enrichment_seconds:.1f}s "
+            f"gpu-enrich={gpu_enrichment_seconds:.1f}s total={total_seconds:.1f}s | "
             f"batch={batch_size} zarr={result.metadata['climatology_cache_status']} "
             f"clim={result.metadata['climatology_hash']}"
         )

@@ -18,6 +18,8 @@ dependencies = [
   "dask[array]>=2024.1",
   "zarr>=2.18,<3",
   "numcodecs>=0.12",
+  "PyYAML>=6.0",
+  "jsonschema>=4.0",
 ]
 
 [project.optional-dependencies]

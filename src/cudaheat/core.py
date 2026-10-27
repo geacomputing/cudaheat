@@ -78,6 +78,7 @@ class EventBatchOutput:
     events: EventRuns
     fields: dict[str, np.ndarray]
     telemetry: BatchTelemetry
+    enrichment: Any | None = None
 
 
 class CUDAHeat:
@@ -627,6 +628,9 @@ class CUDAHeat:
         max_internal_gap_hours: int = 6,
         join_gap_hours: int = 48,
         retain_fields: Iterable[str] = (),
+        enrich: bool = False,
+        rule_directory: str | Path | None = None,
+        enrichment_batch_size: int | None = None,
     ) -> EventDetectionResult:
         """Detect vectorized threshold-exceedance events on the GPU.
 
@@ -637,6 +641,12 @@ class CUDAHeat:
         preserves the smoothed annual cycles needed for CPU-only event plots.
         These fields have shape ``(climatology_hour, point)``; a full
         timestamp-aligned threshold is deliberately not retained.
+
+        Set ``enrich=True`` to discover YAML rules and evaluate them on the
+        final GPU events before this result is assembled. ``enrichment_batch_size``
+        bounds rule scratch memory independently of the detection batch size.
+        The standalone :func:`cudaheat.enrich` path remains available for
+        retroactive rules and existing results.
         """
         if not isinstance(min_duration_hours, int) or isinstance(min_duration_hours, bool):
             raise TypeError("min_duration_hours must be an integer")
@@ -656,6 +666,20 @@ class CUDAHeat:
             raise ValueError(
                 "unknown retained detection field(s): " f"{sorted(unknown_retained)!r}"
             )
+        if not isinstance(enrich, bool):
+            raise TypeError("enrich must be a boolean")
+        if enrichment_batch_size is not None and (
+            not isinstance(enrichment_batch_size, int)
+            or isinstance(enrichment_batch_size, bool)
+            or enrichment_batch_size < 1
+        ):
+            raise ValueError("enrichment_batch_size must be a positive integer or None")
+        enrichment_rules: tuple[Any, ...] = ()
+        if enrich:
+            from .enrichment import discover_rules
+
+            enrichment_rules = discover_rules(rule_directory)
+        resolved_enrichment_batch_size = enrichment_batch_size or 256
         smooth_window_hours = self._resolve_smooth_window_hours(smooth_window_hours)
         rows = baseline_rows(self._time, baseline)
         climatology_nbins = self._climatology_nbins(rows)
@@ -679,6 +703,20 @@ class CUDAHeat:
             for name in retained
         }
         event_parts: list[EventRuns] = []
+        enrichment_parts: dict[tuple[str, str], dict[str, list[np.ndarray]]] = {
+            (rule.id, rule.version): {} for rule in enrichment_rules
+        }
+        enrichment_gpu_seconds = 0.0
+        enrichment_spatial_subbatches = 0
+        event_index_start = 0
+        enrichment_coordinates = self._enrichment_coordinates() if enrichment_rules else {}
+        enrichment_utc_hours = (
+            np.mod(
+                np.asarray(self._time.values, dtype="datetime64[h]").astype(np.int64), 24
+            ).astype(np.int16)
+            if enrichment_rules
+            else None
+        )
         telemetry: list[BatchTelemetry] = []
         point_start = 0
         active_batch_size = self.batch_size
@@ -715,6 +753,11 @@ class CUDAHeat:
                             host_prepare_seconds,
                             transferred_fields,
                             cached_cycles,
+                            enrichment_rules,
+                            resolved_enrichment_batch_size,
+                            event_index_start,
+                            enrichment_coordinates,
+                            enrichment_utc_hours,
                         )
                     except Exception as exc:
                         del cpu_values
@@ -745,6 +788,14 @@ class CUDAHeat:
                             duration=np.asarray(output.events.duration, dtype=np.intp),
                         )
                     )
+                    if output.enrichment is not None:
+                        enrichment_gpu_seconds += output.enrichment.gpu_seconds
+                        enrichment_spatial_subbatches += output.enrichment.spatial_subbatches
+                        for key, fields in output.enrichment.values.items():
+                            destination = enrichment_parts[key]
+                            for name, values in fields.items():
+                                destination.setdefault(name, []).append(values)
+                    event_index_start += int(output.events.point.size)
                     if climatology_cache is not None and climatology_cache.needs_write:
                         climatology_cache.write_batch(point_start, point_stop, output.fields)
                     self._store_batch(output.fields, retained_buffers, point_start, point_stop)
@@ -768,6 +819,24 @@ class CUDAHeat:
         self.batch_size = active_batch_size
         final_assembly_start = perf_counter()
         data = self._event_dataset(event_parts)
+        enrichment_provenance: list[dict[str, Any]] = []
+        if enrichment_rules:
+            from .enrichment import attach_enrichment_outputs
+
+            enrichment_values: dict[tuple[str, str], dict[str, np.ndarray]] = {}
+            for rule in enrichment_rules:
+                key = (rule.id, rule.version)
+                fields = enrichment_parts[key]
+                enrichment_values[key] = {
+                    name: np.concatenate(parts) for name, parts in fields.items()
+                }
+                if "value" not in enrichment_values[key]:
+                    enrichment_values[key]["value"] = np.empty(0, dtype=np.float64)
+                if any(values.size != data.sizes["event"] for values in enrichment_values[key].values()):
+                    raise RuntimeError("GPU enrichment output is not aligned to the event catalogue")
+            data, enrichment_provenance = attach_enrichment_outputs(
+                data, enrichment_rules, enrichment_values
+            )
         retained_field_data = self._retained_cycle_dataset(retained_buffers, climatology_nbins)
         grid = EventGrid(
             time=np.array(self._time.values, copy=True),
@@ -828,6 +897,20 @@ class CUDAHeat:
             _grid=grid,
             retained_fields=retained_field_data,
         )
+        if enrichment_rules:
+            result.metadata.update(
+                {
+                    "enrichment_rules": enrichment_provenance,
+                    "enrichment_timing": {
+                        "mode": "gpu_detection_batches",
+                        "event_count": event_index_start,
+                        "spatial_subbatches": enrichment_spatial_subbatches,
+                        "gpu_seconds": enrichment_gpu_seconds,
+                        "source_reads": 0,
+                        "threshold_reads": 0,
+                    },
+                }
+            )
         self.last_detection_result = result
         return result
 
@@ -865,6 +948,19 @@ class CUDAHeat:
             point_values=self.point_indices,
             point_coordinates=self._point_coordinates,
         )
+
+    def _enrichment_coordinates(self) -> dict[str, np.ndarray]:
+        """Return point-aligned coordinates usable by GPU enrichment rules."""
+        coordinates = dict(self._point_coordinates)
+        for target, names in (("latitude", ("latitude", "lat")), ("longitude", ("longitude", "lon"))):
+            if target in coordinates:
+                continue
+            for name in names:
+                coordinate = self._stacked.coords.get(name)
+                if coordinate is not None and coordinate.dims == ("point",):
+                    coordinates[target] = np.asarray(coordinate.values)
+                    break
+        return coordinates
 
     def _execute_gpu_batch(
         self,
@@ -978,6 +1074,11 @@ class CUDAHeat:
         host_prepare_seconds: float,
         retained: frozenset[str],
         cached_cycles: dict[str, np.ndarray] | None = None,
+        enrichment_rules: tuple[Any, ...] = (),
+        enrichment_batch_size: int = 256,
+        event_index_start: int = 0,
+        enrichment_coordinates: dict[str, np.ndarray] | None = None,
+        enrichment_utc_hours: np.ndarray | None = None,
     ) -> tuple[EventBatchOutput, BatchTelemetry]:
         """Preprocess and detect one batch, retaining requested compact cycles."""
         cp = cupy()
@@ -1039,6 +1140,39 @@ class CUDAHeat:
             event_end.record()
             event_end.synchronize()
             gpu_compute = cp.cuda.get_elapsed_time(event_start, event_end) / 1000
+            enrichment = None
+            if enrichment_rules:
+                from .enrichment import enrich_device_batch
+
+                if enrichment_utc_hours is None:
+                    raise RuntimeError("missing UTC-hour metadata for GPU enrichment")
+                if gpu_fields is not None:
+                    climatology_cycle: Any | Callable[[], Any] | None = gpu_fields.climatology
+                elif cached_cycles is not None:
+                    device_cycles: dict[str, Any] = {}
+
+                    def climatology_cycle() -> Any:
+                        if "climatology" not in device_cycles:
+                            device_cycles["climatology"] = cp.asarray(cached_cycles["climatology"])
+                        return device_cycles["climatology"]
+                else:  # pragma: no cover - defensive narrowing guard
+                    climatology_cycle = None
+                enrichment = enrich_device_batch(
+                    enrichment_rules,
+                    xp=cp,
+                    variable=self.variable,
+                    timestamps=np.asarray(self._time.values),
+                    sst=gpu_values,
+                    threshold=threshold,
+                    bins=gpu_bins,
+                    utc_hours=cp.asarray(enrichment_utc_hours),
+                    events=detected.events,
+                    event_index_start=event_index_start,
+                    point_indices=self.point_indices[point_start:point_stop],
+                    coordinates=enrichment_coordinates or {},
+                    enrichment_batch_size=min(enrichment_batch_size, point_stop - point_start),
+                    climatology_cycle=climatology_cycle,
+                )
             free_after_compute, _ = cp.cuda.runtime.memGetInfo()
             pool_used = cp.get_default_memory_pool().used_bytes()
             transfer_start = perf_counter()
@@ -1091,7 +1225,7 @@ class CUDAHeat:
                 del gpu_rows
             release_gpu_memory(self.device_id)
             return (
-                EventBatchOutput(point_start, point_stop, events, retained_fields, telemetry),
+                EventBatchOutput(point_start, point_stop, events, retained_fields, telemetry, enrichment),
                 telemetry,
             )
 

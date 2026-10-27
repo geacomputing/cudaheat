@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from configparser import ConfigParser
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from hashlib import sha256
 import json
 import os
@@ -187,6 +187,19 @@ _SCHEMA_STATEMENTS = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS events_run_point_time_idx ON events (run_id, point_id, start_time)",
+    """
+    CREATE TABLE IF NOT EXISTS event_enrichments (
+        event_enrichment_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        event_id BIGINT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+        rule_id TEXT NOT NULL,
+        rule_version TEXT NOT NULL,
+        rule_sha256 CHAR(64) NOT NULL,
+        result JSONB NOT NULL,
+        applied_at TIMESTAMPTZ NOT NULL,
+        UNIQUE (event_id, rule_id, rule_version)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS event_enrichments_rule_idx ON event_enrichments (rule_id, rule_version)",
 )
 
 _RUN_INSERT = """
@@ -239,6 +252,17 @@ INSERT INTO events (
     run_id, point_id, cudaheat_event_index, start_index, stop_index,
     start_time, end_time, duration_hours
 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+"""
+
+_EVENT_IDS_FOR_RUN = "SELECT event_id, cudaheat_event_index FROM events WHERE run_id = %s"
+
+_EVENT_ENRICHMENT_INSERT = """
+INSERT INTO event_enrichments (
+    event_id, rule_id, rule_version, rule_sha256, result, applied_at
+) VALUES (
+    %(event_id)s, %(rule_id)s, %(rule_version)s, %(rule_sha256)s, %(result)s, %(applied_at)s
+)
+ON CONFLICT (event_id, rule_id, rule_version) DO NOTHING
 """
 
 
@@ -296,12 +320,187 @@ def persist_detection_result(
                 _EVENT_INSERT,
                 _event_rows(event_data, run_id, point_id_by_grid_index),
             )
+            _persist_enrichment_catalogue(cursor, result.data, result.metadata, run_id, Jsonb)
     return run_id
+
+
+def enrich_stored_run(
+    run_id: str | UUID,
+    config: PostgresConfig,
+    *,
+    rule_directory: str | Path | None = None,
+) -> dict[str, Any]:
+    """Retroactively enrich one persisted run using the same vectorized evaluator.
+
+    PostgreSQL supplies only the old sparse catalogue.  SST and climatology
+    data are still read in storage-local spatial batches by :func:`enrich`'s
+    shared evaluator.
+    """
+    from .enrichment import _enrich_catalogue, discover_rules
+
+    psycopg = _load_psycopg()
+    from psycopg.types.json import Jsonb
+
+    rules = discover_rules(rule_directory)
+    with psycopg.connect(**config.connection_kwargs()) as connection:
+        with connection.cursor() as cursor:
+            _create_schema(cursor)
+            cursor.execute("SELECT run_id, metadata FROM runs WHERE run_id = %s", (run_id,))
+            run = cursor.fetchone()
+            if run is None:
+                raise LookupError(f"run does not exist: {run_id}")
+            persisted_run_id, metadata = run
+            if not isinstance(metadata, Mapping):
+                raise ValueError("persisted run metadata is malformed")
+            cursor.execute(
+                """
+                SELECT e.cudaheat_event_index, p.grid_point_index, e.start_index, e.stop_index,
+                       e.duration_hours, e.start_time, e.end_time
+                FROM events AS e JOIN points AS p ON p.point_id = e.point_id
+                WHERE e.run_id = %s
+                ORDER BY e.cudaheat_event_index
+                """,
+                (persisted_run_id,),
+            )
+            rows = cursor.fetchall()
+            catalogue = _stored_catalogue(rows)
+            data, provenance, timing = _enrich_catalogue(catalogue, metadata, rules)
+            _persist_enrichment_catalogue(
+                cursor,
+                data,
+                {"enrichment_rules": provenance},
+                UUID(str(persisted_run_id)),
+                Jsonb,
+            )
+    return timing
 
 
 def _create_schema(cursor: Any) -> None:
     for statement in _SCHEMA_STATEMENTS:
         cursor.execute(statement)
+
+
+def _persist_enrichment_catalogue(
+    cursor: Any,
+    catalogue: Any,
+    metadata: Mapping[str, Any],
+    run_id: UUID,
+    jsonb_type: Any,
+) -> None:
+    """Persist already-calculated rule outputs without re-reading numerical data."""
+    specifications = _enrichment_specifications(catalogue, metadata)
+    if not specifications:
+        return
+    cursor.execute(_EVENT_IDS_FOR_RUN, (run_id,))
+    event_id_by_index = {int(index): int(event_id) for event_id, index in cursor}
+    event_indices = np.asarray(catalogue["event"].values, dtype=np.int64)
+    if set(event_indices) != set(event_id_by_index):
+        raise RuntimeError("persisted event identities do not match enrichment results")
+    applied_at = datetime.now(timezone.utc)
+    for specification in specifications:
+        _assert_immutable_rule_version(cursor, specification)
+        variables = specification["result_variables"]
+        values = {
+            output_name: np.asarray(catalogue[variable_name].values)
+            for output_name, variable_name in variables.items()
+        }
+        rows = [
+            {
+                "event_id": event_id_by_index[int(event_index)],
+                "rule_id": specification["id"],
+                "rule_version": specification["version"],
+                "rule_sha256": specification["sha256"],
+                "result": jsonb_type(
+                    {
+                        output_name: _json_enrichment_value(column[position])
+                        for output_name, column in values.items()
+                    }
+                ),
+                "applied_at": applied_at,
+            }
+            for position, event_index in enumerate(event_indices)
+        ]
+        cursor.executemany(_EVENT_ENRICHMENT_INSERT, rows)
+
+
+def _enrichment_specifications(catalogue: Any, metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
+    declared = metadata.get("enrichment_rules", ())
+    if declared in (None, ()):
+        return []
+    if not isinstance(declared, list):
+        raise ValueError("enrichment_rules metadata must be a list")
+    specifications: list[dict[str, Any]] = []
+    for rule in declared:
+        if not isinstance(rule, Mapping):
+            raise ValueError("enrichment rule provenance must be a mapping")
+        identifier = rule.get("id")
+        version = rule.get("version")
+        digest = rule.get("sha256")
+        variables = rule.get("result_variables")
+        if (
+            not isinstance(identifier, str)
+            or not isinstance(version, str)
+            or not isinstance(digest, str)
+            or len(digest) != 64
+            or not isinstance(variables, Mapping)
+            or "value" not in variables
+        ):
+            raise ValueError("enrichment rule provenance is malformed")
+        variable_names = {str(name): str(value) for name, value in variables.items()}
+        if any(name not in catalogue for name in variable_names.values()):
+            raise ValueError("enrichment output is absent from the event catalogue")
+        if any(catalogue[name].dims != ("event",) for name in variable_names.values()):
+            raise ValueError("enrichment outputs must have the event dimension only")
+        specifications.append(
+            {
+                "id": identifier,
+                "version": version,
+                "sha256": digest,
+                "result_variables": variable_names,
+            }
+        )
+    return specifications
+
+
+def _assert_immutable_rule_version(cursor: Any, specification: Mapping[str, Any]) -> None:
+    cursor.execute(
+        "SELECT DISTINCT rule_sha256 FROM event_enrichments WHERE rule_id = %s AND rule_version = %s",
+        (specification["id"], specification["version"]),
+    )
+    hashes = {str(row[0]).strip() for row in cursor}
+    if hashes and hashes != {str(specification["sha256"])}:
+        raise ValueError(
+            f"rule {specification['id']}@{specification['version']} differs from its persisted file"
+        )
+
+
+def _json_enrichment_value(value: Any) -> Any:
+    scalar = value.item() if isinstance(value, np.generic) else value
+    if isinstance(scalar, (float, np.floating)):
+        return float(scalar) if np.isfinite(scalar) else None
+    if isinstance(scalar, (bool, np.bool_)):
+        return bool(scalar)
+    if isinstance(scalar, (int, np.integer)):
+        return int(scalar)
+    raise TypeError(f"enrichment output is not JSON-compatible: {type(scalar).__name__}")
+
+
+def _stored_catalogue(rows: list[tuple[Any, ...]]) -> Any:
+    """Build the sparse xarray shape required by the shared retroactive evaluator."""
+    import xarray as xr
+
+    columns = list(zip(*rows, strict=True)) if rows else [()] * 7
+    return xr.Dataset(
+        {
+            "point_index": ("event", np.asarray(columns[1], dtype=np.int64)),
+            "start_index": ("event", np.asarray(columns[2], dtype=np.intp)),
+            "stop_index": ("event", np.asarray(columns[3], dtype=np.intp)),
+            "duration_hours": ("event", np.asarray(columns[4], dtype=np.intp)),
+            "start_time": ("event", np.asarray(columns[5])),
+            "end_time": ("event", np.asarray(columns[6])),
+        },
+        coords={"event": np.asarray(columns[0], dtype=np.int64)},
+    )
 
 
 def _run_row(

@@ -1,0 +1,76 @@
+id: fraction_above_threshold
+version: "1.0.1"
+
+short_name: Threshold exceedance
+long_name: Fraction of event hours above the climatological threshold
+
+symbol: F_T
+
+category:
+  primary: persistence
+  secondary: threshold_exceedance
+
+description: >
+  Fraction of valid hourly observations within a detected marine
+  heatwave event for which SST exceeds the corresponding
+  climatological percentile threshold.
+
+interpretation: >
+  Values approaching 1 indicate persistent threshold exceedance
+  throughout the event. Lower values indicate a larger contribution
+  from below-threshold periods, such as internal gaps or joined
+  event segments.
+
+formula_latex: |
+  F_T =
+  \frac{
+    \displaystyle\sum_{t=t_s}^{t_e}
+    \mathbf{1}
+    \left[
+      SST_{p,t} > T_{p,h(t)}
+    \right]
+    \mathbf{1}_{\mathrm{valid}}(p,t)
+  }{
+    \displaystyle\sum_{t=t_s}^{t_e}
+    \mathbf{1}_{\mathrm{valid}}(p,t)
+  }
+
+symbols:
+  F_T: "Fraction of valid event hours above threshold"
+  SST_p_t: "Observed SST at point p and time t"
+  T_p_h: "Climatological threshold at point p and climatological hour h(t)"
+  p: "Spatial point associated with the event"
+  t: "Hourly time index"
+  t_s: "Event start"
+  t_e: "Event end"
+  h(t): "Climatological month-day-hour corresponding to time t"
+
+output:
+  name: fraction_above_threshold
+  unit: dimensionless
+  range: [0.0, 1.0]
+  dimensions: [event]
+
+python: |
+  import numpy as np
+
+  def calculate(context):
+      xp = context.xp
+      sst = context.sst
+      threshold = context.threshold
+
+      valid = xp.isfinite(sst) & xp.isfinite(threshold)
+      above = valid & (sst > threshold)
+
+      true_hours = context.count(above)
+      valid_hours = context.count(valid)
+
+      with np.errstate(divide="ignore", invalid="ignore"):
+          value = true_hours / valid_hours
+
+      return {
+          "value": value,
+          "true_hours": true_hours,
+          "valid_hours": valid_hours,
+          "missing_hours": context.duration_hours - valid_hours,
+      }
