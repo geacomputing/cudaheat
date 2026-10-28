@@ -1,231 +1,150 @@
 # CUDAHeat
 
-Experimental GPU-native preprocessing and event detection for hourly SST Marine Heatwave analysis.
+CUDAHeat is a GPU-native Python package for hourly sea-surface-temperature
+climatology, marine heatwave detection, sparse event results, enrichment, and
+optional PostgreSQL persistence.
 
-## Architecture
+## Processing model
 
 ```
-NetCDF -> Xarray / CPU -> complete time x spatial batch -> CuPy / CUDA
+NetCDF / xarray -> complete time × spatial batch -> CuPy
 ```
 
-Time is scientifically indivisible; space is computationally divisible. CUDAHeat stacks spatial dimensions into `point` and transfers full `(time, point_batch)` arrays. It never splits time. On an OOM it clears CuPy memory, halves the spatial batch, and retries the same complete time series. One series that cannot fit raises a clear exception.
+CUDAHeat never partitions a time series. It stacks spatial dimensions into
+`point`, transfers every time step for one spatial batch to the GPU, and
+halves only the spatial batch after an out-of-memory error. A single series
+that cannot fit raises `InsufficientVRAMError`.
 
-## Current milestone
-
-- Runtime NVIDIA VRAM discovery and conservative VRAM-aware point batching.
-- Configurable 30% free-VRAM safety reserve.
-- Explicit `float32` default or `float64` processing.
-- NaN-aware hourly Hobday climatology: same-clock-hour 11-day sampling,
-  90th-percentile thresholds, 31-day same-hour circular smoothing, anomaly,
-  excess, and GPU exceedance mask.
-- Per-batch host-read, preparation, allocation, transfer, CUDA-event compute, result-assembly, OOM-retry, and VRAM telemetry.
-- Explicit preallocated device-buffer transfers, avoiding an unnecessary host/device conversion in the H2D path.
-- Separate benchmark utilities with CSV/JSON export, a timestamped campaign runner, and high-resolution Matplotlib figures (PNG/PDF/SVG).
-
-The default climatological cycle has 366 × 24 month/day/hour bins. The
-hourly adaptation pools equivalent clock hours across a centred ±5-calendar-day
-window, interpolates 29 February from its neighbours, then applies centred,
-circular 31-day smoothing without blending clock hours. NetCDF I/O stays on
-CPU through Xarray; CuPy performs GPU calculations.
+The default GPU dtype is `float32`; `float64` is also supported. The default
+VRAM reserve is 15% of currently free memory. `devices` accepts selected
+device IDs, but batches currently execute sequentially on the first one.
 
 ## Install
 
 ```bash
-pip install -e '.[gpu,benchmark,test]'
+pip install -e '.[gpu,test]'
 ```
 
-For bounded-RAM Dask-backed NetCDF reads, pass `lazy=True` to `CUDAHeat`.
-CUDAHeat still transfers complete time series and uses spatial batches only.
+Use `.[postgres]` for PostgreSQL persistence and `.[plot]` for plotting
+examples. CuPy must match the installed CUDA driver. Importing the package does
+not require CuPy, but creating `CUDAHeat` requires an available CUDA device.
 
-Install the CuPy extra matching the installed CUDA driver. Base-package imports work without CuPy, but `CUDAHeat` requires an NVIDIA CUDA device.
-
-## Optional PostgreSQL event catalogue
-
-Install the optional driver, copy `config/postgres.example.ini` to the ignored
-`config/postgres.ini`, and set its configured password environment variable:
-
-```bash
-pip install -e '.[postgres]'
-cp config/postgres.example.ini config/postgres.ini
-export CUDAHEAT_POSTGRES_PASSWORD='...'
-```
-
-The password is never stored in the configuration file. An existing standard
-`~/.pgpass` setup may be used instead by leaving that environment variable
-unset. Persist only a completed sparse detection result; CUDAHeat does not
-store SST or climatology arrays in PostgreSQL.
-
-```python
-from cudaheat import load_postgres_config, persist_detection_result
-
-result = hw.detect(baseline=(1982, 2011))
-run_id = persist_detection_result(result, load_postgres_config())
-```
-
-An identical source checksum, spatial grid, and detection configuration is
-rejected as a duplicate run with ``DuplicateRunError``.
-
-## Minimal use
+## Basic use
 
 ```python
 from cudaheat import CUDAHeat
 
-with CUDAHeat("sst.nc", variable="analysed_sst", dtype="float32", vram_safety=0.30, devices=[0]) as hw:
-    print(hw.ntime, hw.npoints, hw.batch_size, hw.gpu_info)
-    result = hw.run(baseline=(1982, 2011), percentile=0.90)  # default: 31 days (744 h)
+with CUDAHeat("sst.nc", variable="analysed_sst", dtype="float32") as heat:
+    result = heat.run(baseline=(1982, 2011))
     print(result.exceedance_count)
-
-    # Explicit, host-memory-intensive output for manageable datasets only.
-    mask = hw.mask(baseline=(1982, 2011))
 ```
 
-### Input and batch selection
+`run()` returns per-point exceedance counts by default. Use
+`return_fields={"mask"}` or other documented fields only when the resulting
+time-by-space output fits host memory. An `on_batch` callback can consume
+requested fields one spatial batch at a time.
 
-For a NetCDF path, CUDAHeat now uses `input_optimization="auto"` by default.
-It accepts an existing CUDAHeat `(time, point)` file unchanged; otherwise it
-writes and validates a central local cache file such as
-`.cudaheat-cache/<source-sha>/sst.cudaheat.nc`, never overwriting the source
-file. It validates this file against a SHA-256 fingerprint of the raw source.
-`detect()` also creates or reuses
-`.cudaheat-cache/<source-sha>/sst.cudaheat.clim-<hash>.zarr` for its
-climatology and threshold cycles; duration and gap controls reuse that same
-product. The run metadata records the source fingerprint, climatology hash,
-paths, and cache status. Set `CUDAHEAT_CACHE_DIR` only to relocate this cache.
+Convenience methods are:
 
-`batch_size="guess"` is the default. It immediately chooses the closest of
-`512`, `1024`, `1536`, or `2048` to one quarter of the VRAM-safe ceiling.
-Those values are multiples of CUDAHeat's standard 512-point optimized input
-chunk. It does not benchmark, run trial CUDA work, or create a batch-size
-cache. Set `batch_size` once on `CUDAHeat`; both `run()` and `detect()` use
-that same engine-level value.
+- `climatology()` for the smoothed annual cycle.
+- `thresholds()` for the timestamp-aligned threshold.
+- `mask()` for an in-memory exceedance mask.
+- `validate()` for CPU/GPU agreement diagnostics.
+
+## Input preparation and batching
+
+For a NetCDF path, `input_optimization="auto"` is the default. CUDAHeat uses
+an existing `(time, point)` input unchanged or creates a validated compact
+NetCDF cache outside the source file. The cache location is
+`.cudaheat-cache/<source-sha>/` by default, or `CUDAHEAT_CACHE_DIR` when
+set. The raw source SHA-256 and storage metadata prevent stale-cache reuse.
+
+Use `input_optimization="skip"` to read the supplied layout directly, or
+`"require"` to reject a non-optimized grid. `lazy=True` uses Dask-backed
+NetCDF reads; it bounds I/O memory but does not change the complete-time GPU
+processing rule.
+
+`batch_size="guess"` chooses one of 512, 1024, 1536, or 2048 points near a
+conservative VRAM target. An explicit positive batch size is also supported.
+
+## Climatology and detection
+
+The default climatology uses a 366 × 24 month/day/hour cycle, same-clock-hour
+sampling over ±5 calendar days, leap-day interpolation, and 31-day (744-hour)
+same-hour circular smoothing. A `dayofyear` calendar mode is also available.
 
 ```python
-# Default: optimize a path if needed, then make one immediate structural guess.
-with CUDAHeat("sst.nc", variable="analysed_sst", batch_size="guess") as hw:
-    result = hw.run(baseline=(1982, 2011))
-
-# Fully reproducible explicit size.
-with CUDAHeat("sst.nc", variable="analysed_sst", batch_size=512) as hw:
-    result = hw.run(baseline=(1982, 2011))
+events = heat.detect(
+    baseline=(1982, 2011),
+    percentile=0.90,
+    min_duration_hours=120,
+    max_internal_gap_hours=6,
+    join_gap_hours=48,
+)
 ```
 
-Use `input_optimization="skip"` to retain direct grid input or
-`input_optimization="require"` to reject an unoptimized file.
+Detection retains raw exceedances, fills bounded internal gaps, finds
+contiguous runs, applies the minimum duration, and joins nearby qualifying
+runs. `detect()` creates or reuses a Zarr cache for the compact climatology
+and threshold cycles when the input is a complete optimized path input.
 
-`run()` returns compact per-point exceedance counts by default. For production-size outputs, request fields with `return_fields` and use `on_batch` to persist every spatial batch without retaining all `(time, point)` values in CPU RAM.
+The returned `EventDetectionResult` contains a sparse event catalogue. Use
+`select_events()`, `point_events()`, `point_timeseries()`, or
+`event_timeseries()` for targeted analysis. `to_xarray()` reconstructs a
+Dask-backed, chunked dense event-ID field; avoid loading the entire field into
+memory.
 
-`detect()` retains only a compact sparse event catalogue. `to_xarray()` and
-`to_dense()` reconstruct a Dask-backed, chunked `event_id` cube from that
-catalogue; they do not retain or allocate dense SST, threshold, or anomaly
-fields. Zero means no event and positive values are catalogue IDs.
+## Enrichment
+
+Pass `enrich=True` to `detect()`, or call `cudaheat.enrich(result)` for
+an existing result. CUDAHeat discovers YAML rules, validates and executes their
+embedded calculations, and attaches event-aligned outputs plus rule
+provenance. Rule directories are executable extensions and must be trusted.
+
+The standalone enrichment path reads the optimized source and climatology
+cache in storage-local batches. Integrated detection enrichment evaluates
+rules on device-resident batch data and avoids a second source read.
+
+## PostgreSQL persistence
 
 ```python
-dense = result.to_xarray(time_chunk_hours=168)
-point = dense.isel(latitude=33, longitude=30).compute()
+from cudaheat import load_postgres_config, persist_detection_result
+
+run_id = persist_detection_result(events, load_postgres_config())
 ```
 
-Do not call `.load()` or `.values` on the complete `dense` Dataset; that
-deliberately materializes a full dense cube. Use the CPU-only
-`result.select_events(...)` method for catalogue filtering, or write the
-Dask-backed cube to a chunked store such as Zarr.
+Copy `config/postgres.example.ini` to the ignored `config/postgres.ini`.
+Passwords are resolved from the configured environment variable or standard
+libpq configuration; they are not stored in the INI file. Persistence stores
+run metadata, point identities, sparse events, and enrichment outputs—not SST
+or dense climatology arrays.
 
-For an SST/threshold plot, reconstruct only the required point or event. This
-reads one full time series and performs no CUDA work:
+## Package layout
 
-```python
-event = result.event_timeseries(event_id=42, pad_hours=48)
-event[["sst", "climatology", "threshold"]].to_array().plot.line(x="time")
-```
+- `core.py`: public GPU engine and orchestration.
+- `climatology.py`, `detection.py`: numerical algorithms.
+- `preprocessing.py`, `io.py`, `memory.py`, `climatology_cache.py`:
+  input layout, bounded reads, VRAM policy, and cycle caching.
+- `result.py`: sparse events and lazy dense reconstruction.
+- `enrichment.py`, `postgres.py`: optional rule evaluation and storage.
+- `validation.py`: CPU/GPU numerical diagnostics.
 
-`result.point_timeseries(latitude=33, longitude=30)` returns the full history
-for one positional grid point; its keyword arguments follow `isel` indexing.
-Use `result.point_events(latitude=33, longitude=30)` to get its event IDs from
-the sparse catalogue without creating a dense cube.
+## Validation
 
-## Validation and benchmarks
-
-`cudaheat.climatology.cpu_pre_event_fields` is the NumPy reference used for CPU/GPU tests, including NaNs and float32 tolerances. Run tests with `pytest`.
-
-Targeted validation keeps every time step for a seeded selection of valid ocean
-points. It compares CPU float64 with GPU float32 (or float64) for raw and
-smoothed climatology/thresholds, anomaly, excess, mask, and exceedance counts.
-It returns a `ValidationResult` with numerical, NaN, threshold-boundary, and
-count diagnostics, and can write JSON without large arrays.
+With the GPU extra and an available CUDA device, run the suite with:
 
 ```bash
-python examples/validate_real_data.py sst.nc \
+pytest -q
+```
+
+The suite creates its own small inputs, except for the real-data smoke-test
+placeholder, which is skipped automatically because it requires a manually
+provisioned dataset and CUDA device. For explicit real-data validation, use:
+
+```bash
+python examples/validate_real_data.py PATH_TO_SST.nc \
   --variable analysed_sst --baseline 2019 2025 --points 50
 ```
 
-Use `--full-dataset` only for the optional full spatial validation; it still
-batches space only and keeps every time series complete.
-
-```python
-from cudaheat.benchmark import CUDAHeatBenchmark
-
-benchmark = CUDAHeatBenchmark(hw)
-benchmark.run(repeats=3, warmup=1, point_counts=[100, 1000], gpu_dtypes=["float32"])
-benchmark.export_json("benchmark-results/run.json")
-```
-
-When `batch_sizes` is omitted, a benchmark uses the engine's configured
-`batch_size`. Pass `batch_sizes=[512, 1024]` to benchmark explicit sizes.
-
-Benchmarks retain real repeat measurements only. They separately report CPU
-compute, host-to-device transfer, CUDA-event GPU compute, device-to-host
-transfer, end-to-end timing, both speedups, throughput, and batch telemetry.
-Spatial and controlled-batch scaling never shorten time. Use the real-data CLI
-to create CSV, JSON, and actual-measurement Matplotlib plots:
-
-```bash
-python benchmarks/benchmark_real_data.py sst.nc \
-  --variable analysed_sst --baseline 2019 2025 --dtype float32 --repeats 3
-```
-
-Outputs default to `benchmark-results/`; use `--output-dir` to select another
-location. No multi-GPU performance result is generated until multi-GPU execution exists.
-
-For a complete validation, dense scaling, batch-size, precision, figure, and
-report campaign on a real dataset:
-
-```bash
-python benchmarks/run_real_data_campaign.py /path/to/sst.nc \
-  --variable analysed_sst --baseline 2019 2025 \
-  --percentile 0.90 --smooth-window-hours 744
-```
-
-Each campaign writes a non-overwriting timestamped directory containing raw
-CSV/JSON repetitions, summaries, validation JSON, a Markdown report, and 12
-large PNG/PDF/SVG figures. Warm-ups are excluded from the stored results.
-
-## Measured real-data result
-
-On an NVIDIA GeForce RTX 4070 Laptop GPU, CUDAHeat processed the provided
-7-year `analysed_sst` dataset (64,080 hours × 18,055 points; 1.157 billion SST
-values) without splitting time. These are mean float32-GPU / float64-CPU
-measurements from the dense campaign:
-
-| Metric | Measured result |
-| --- | ---: |
-| CPU float64 compute | 123.10 s |
-| GPU float32 compute | 5.26 s |
-| GPU float32 device end-to-end | 5.63 s |
-| Complete GPU pipeline wall time | 7.73 s |
-| Compute / device end-to-end speedup | 23.40× / 21.88× |
-| Automatic batch / peak VRAM | 2,276 points / 5.33 GiB |
-
-The explicit transfer path reduced measured H2D time from 4.924 s to 0.353 s
-(14.0×); GPU computation is now the dominant device cost. GPU32 validation at
-500 points across seeds 0, 42, and 123 retained at least 99.99911985% mask
-agreement; a 1,000-point run retained 99.99911205%. GPU64 at 500 points
-retained 99.99973783% agreement. Differences were threshold-boundary cases;
-no NaN-location disagreements were observed.
-
-## Roadmap
-
-`detect()` uses a documented complete-time GPU event-segmentation pipeline.
-Its defaults are a 120-hour minimum duration, 6-hour bounded internal gaps,
-and 48-hour joining gaps. The sequential first milestone is device-explicit;
-a future scheduler can distribute independent spatial batches across
-`devices=[0, 1, ...]` without rewriting the scientific core. Validate results,
-precision, and memory telemetry for every SST product before scientific use.
+Validate each scientific SST product, precision choice, and memory setting
+before interpreting results.

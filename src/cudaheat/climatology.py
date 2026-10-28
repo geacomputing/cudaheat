@@ -520,23 +520,6 @@ def _nanpercentile_by_bin_gpu(
     return result
 
 
-def _nanpercentile_gpu(values: Any, percentile: float, cp: Any) -> Any:
-    """GPU equivalent of ``numpy.nanpercentile(..., method='linear')``."""
-    valid = ~cp.isnan(values)
-    counts = cp.sum(valid, axis=0)
-    sorted_values = cp.sort(cp.where(valid, values, cp.inf), axis=0)
-    rank = (counts - 1) * percentile
-    lower_index = cp.maximum(cp.floor(rank).astype(cp.intp), 0)
-    upper_index = cp.maximum(cp.ceil(rank).astype(cp.intp), 0)
-    lower = cp.take_along_axis(sorted_values, lower_index[None, :], axis=0)[0]
-    upper = cp.take_along_axis(sorted_values, upper_index[None, :], axis=0)[0]
-    lower = cp.where(counts > 0, lower, 0)
-    upper = cp.where(counts > 0, upper, 0)
-    fraction = rank - cp.floor(rank)
-    percentile_values = lower + (upper - lower) * fraction
-    return cp.where(counts > 0, percentile_values, cp.nan)
-
-
 def _nanpercentile_grouped_gpu(values: Any, percentile: float, cp: Any) -> Any:
     """Linear NaN percentile for ``(bin, baseline_sample, point)`` values."""
     valid = ~cp.isnan(values)

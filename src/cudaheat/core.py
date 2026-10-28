@@ -25,7 +25,7 @@ from .climatology import (
 from .climatology_cache import ClimatologyCache, open_climatology_cache
 from .detection import EventRuns, detect_events
 from .exceptions import InsufficientVRAMError
-from .io import NetCDFReader, is_optimized_point_layout
+from .io import NetCDFReader, is_optimized_point_layout, resolve_time_dim
 from .memory import (
     BatchEstimate,
     BatchTelemetry,
@@ -219,7 +219,7 @@ class CUDAHeat:
             raise KeyError(f"variable {variable!r} is not present in the dataset")
         self.variable = variable
         self._source = self._dataset[variable]
-        self.time_dim = self._resolve_time_dim(time_dim)
+        self.time_dim = resolve_time_dim(self._source, time_dim)
         self.spatial_dims = tuple(dim for dim in self._source.dims if dim != self.time_dim)
         if not self.spatial_dims:
             self.close()
@@ -314,21 +314,6 @@ class CUDAHeat:
             else:
                 self._dataset.close()
             self._dataset = None
-
-    def _resolve_time_dim(self, requested: str | None) -> str:
-        if requested is not None and requested in self._source.dims:
-            return requested
-        named = [dim for dim in self._source.dims if dim.lower() == "time"]
-        if len(named) == 1:
-            return named[0]
-        datetime_dims = [
-            dim
-            for dim in self._source.dims
-            if dim in self._source.coords and np.issubdtype(self._source[dim].dtype, np.datetime64)
-        ]
-        if len(datetime_dims) == 1:
-            return datetime_dims[0]
-        raise ValueError("could not identify one time dimension; pass time_dim explicitly")
 
     @staticmethod
     def _normalise_point_indices(
@@ -501,6 +486,7 @@ class CUDAHeat:
                         smooth_window_hours,
                         resolved_smooth_min_periods,
                         climatology_nbins,
+                        requested,
                         retries,
                         host_read_seconds,
                         host_prepare_seconds,
@@ -972,6 +958,7 @@ class CUDAHeat:
         smooth_window_hours: int,
         smooth_min_periods: int,
         climatology_nbins: int,
+        requested: frozenset[str],
         retries: int,
         host_read_seconds: float,
         host_prepare_seconds: float,
@@ -1021,7 +1008,7 @@ class CUDAHeat:
             free_after_compute, _ = cp.cuda.runtime.memGetInfo()
             pool_used = cp.get_default_memory_pool().used_bytes()
             transfer_start = perf_counter()
-            fields = self._transfer_requested_fields(gpu_fields)
+            fields = self._transfer_requested_fields(gpu_fields, requested)
             fields["exceedance_count"] = cp.asnumpy(
                 cp.sum(gpu_fields.exceedance, axis=0, dtype=cp.uint64)
             )
@@ -1229,8 +1216,9 @@ class CUDAHeat:
                 telemetry,
             )
 
-    def _transfer_requested_fields(self, fields: PreEventFields) -> dict[str, np.ndarray]:
-        requested = getattr(self, "_active_return_fields", frozenset())
+    def _transfer_requested_fields(
+        self, fields: PreEventFields, requested: frozenset[str]
+    ) -> dict[str, np.ndarray]:
         mapping = {
             "climatology_raw": fields.climatology_raw,
             "climatology": fields.climatology,
@@ -1247,7 +1235,6 @@ class CUDAHeat:
     def _allocate_output_buffers(
         self, requested: frozenset[str], climatology_nbins: int
     ) -> dict[str, np.ndarray]:
-        self._active_return_fields = requested
         specs: dict[str, tuple[tuple[int, int], np.dtype[Any]]] = {
             "climatology_raw": ((climatology_nbins, self.npoints), self.dtype),
             "climatology": ((climatology_nbins, self.npoints), self.dtype),

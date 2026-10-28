@@ -1,20 +1,13 @@
-from cudaheat import CUDAHeat
+"""Placeholder for a manually provisioned real-data smoke test.
 
-PATH = "/home/user/Documents/PhD.cy/lazy_loading/Python.Scripts/sst_7_years.nc"
+The original module ran a GPU pipeline against an absolute local path during
+test collection.  Automated tests must remain self-contained; run real-data
+validation explicitly with ``examples/validate_real_data.py`` instead.
+"""
 
-with CUDAHeat(
-    PATH,
-    variable="analysed_sst",
-    dtype="float32",
-    vram_safety=0.710,
-    devices=[0],
-) as hw:
+import pytest
 
-    print("\nCUDAHeat dataset")
-    print("----------------")
-    print("Time steps:     ", hw.ntime)
-    print("Spatial points: ", hw.npoints)
-    print("Batch size:     ", hw.batch_size)
-    print("GPU info:       ", hw.gpu_info)
 
-    result = hw.run()
+@pytest.mark.skip(reason="requires a manually provisioned real dataset and CUDA device")
+def test_real_data_smoke_test_is_manual_only() -> None:
+    """Reserve the test name without executing external work during collection."""

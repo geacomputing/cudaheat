@@ -22,9 +22,10 @@ python examples/rule_laboratory/rule_lab.py \
   --max-events 0
 ```
 
-Put candidate `.yml` or `.yaml` rules in `rules/`. All files there are
-schema-validated and evaluated together. The JSON output contains the rule
-outputs and timing; pass `--output laboratory-results.json` to save it.
+Put candidate `.yml` or `.yaml` rules in `rules/`. The package discovers,
+validates, and evaluates every rule there together. The JSON output contains
+the rule outputs and timing; pass `--output laboratory-results.json` to save
+it. Treat candidate rule directories as trusted code.
 
 One PNG per event is written to `plots/<run-id>/`. Each plot contains SST,
 threshold, climatology, and 24 hours of context around the shaded event. Its
@@ -33,7 +34,10 @@ rule. Set
 `--plot-padding-hours 0` for the event interval only, or use
 `--plot-directory PATH` to place images elsewhere. Install the optional
 Matplotlib dependency if needed with `pip install -e '.[postgres,plot]'`.
+The dashed daily-mean threshold line is enabled by default; disable it with
+`--no-daily-mean-threshold`.
 
-The supplied `mean_event_anomaly.yml` demonstrates vectorized event means
-using `context.sum(...)` and `context.count(...)`. It is not persisted and
-does not affect production `rules/`.
+The supplied rules demonstrate threshold-fraction and local-time enrichment
+calculations using context fields plus `context.sum(...)` and
+`context.count(...)`. They are not persisted and do not affect production
+`rules/`.

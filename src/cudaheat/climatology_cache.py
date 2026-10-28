@@ -143,7 +143,7 @@ def open_climatology_cache(
     }
     config_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     climatology_hash = sha256(config_json.encode("utf-8")).hexdigest()
-    destination = climatology_sibling_path(resolved_source, source_sha256, climatology_hash)
+    destination = climatology_zarr_path(resolved_source, source_sha256, climatology_hash)
     destination.parent.mkdir(parents=True, exist_ok=True)
     if _valid_cache(
         destination,
@@ -193,13 +193,6 @@ def open_climatology_cache(
         points,
         temporary,
     )
-
-
-def climatology_sibling_path(
-    source_path: str | Path, source_sha256: str, climatology_hash: str
-) -> Path:
-    """Return the deterministic central Zarr path for one configuration."""
-    return climatology_zarr_path(source_path, source_sha256, climatology_hash)
 
 
 def _create_cache(

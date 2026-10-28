@@ -1,5 +1,9 @@
 # CUDAHeat Beamer theme
 
+This is a standalone presentation theme. It is independent of the CUDAHeat
+Python package and does not run analysis, read package configuration, or
+consume benchmark artifacts.
+
 Place beamerthemeCUDAHeat.sty beside your .tex file and use:
 
 ```latex

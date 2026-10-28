@@ -69,6 +69,12 @@ def parse_arguments() -> argparse.Namespace:
         default=24,
         help="hours of context before and after each event plot (default: 24)",
     )
+    parser.add_argument(
+        "--daily-mean-threshold",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="plot the daily-mean threshold as a dashed line (default: enabled)",
+    )
     parser.add_argument("--output",
                         type=Path,
                         help="optional JSON result path")
@@ -199,6 +205,7 @@ def write_event_plots(
     rules: Sequence[Any],
     directory: Path,
     padding_hours: int,
+    show_daily_mean_threshold: bool = True,
 ) -> list[Path]:
     """Plot event fields with a text panel for run and rule details."""
     try:
@@ -279,6 +286,24 @@ def write_event_plots(
             plot_times = timestamps[left:right]
             axis.plot(plot_times, sst, label="SST", color="black", linewidth=1.5)
             axis.plot(plot_times, threshold, label="Threshold", color="tab:red", linewidth=1.25)
+            if show_daily_mean_threshold:
+                daily_threshold = (
+                    xr.DataArray(
+                        threshold,
+                        dims=(time_dimension,),
+                        coords={time_dimension: plot_times},
+                    )
+                    .resample({time_dimension: "1D"})
+                    .mean(skipna=True)
+                )
+                axis.plot(
+                    daily_threshold[time_dimension].values,
+                    daily_threshold.values,
+                    label="Daily mean threshold",
+                    color="tab:red",
+                    linestyle="--",
+                    linewidth=1,
+                )
             axis.plot(plot_times, climatology, label="Climatology", color="tab:blue", linewidth=1.25)
             event_times = timestamps[event_start:event_stop]
             axis.axvspan(event_times[0], event_times[-1], color="tab:orange", alpha=0.15, label="Event")
@@ -419,6 +444,7 @@ def main() -> None:
         rules=rules,
         directory=arguments.plot_directory,
         padding_hours=arguments.plot_padding_hours,
+        show_daily_mean_threshold=arguments.daily_mean_threshold,
     )
     payload["plots"] = [str(path) for path in plot_paths]
     encoded = json.dumps(payload, indent=2, allow_nan=False)

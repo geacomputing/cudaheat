@@ -16,16 +16,6 @@ DEFAULT_POSTGRES_CONFIG = PROJECT_ROOT / "config/postgres.ini"
 # the same climatology configuration and therefore reuse one Zarr product.
 TEST_CONFIGURATIONS = (
     (120, 14, 24),
-    (120, 3, 12),
-    (120, 6, 24),
-    (120, 12, 48),
-    (120, 4, 48),
-    (120, 5, 48),
-    (120, 7, 48),
-    (120, 8, 48),
-    (120, 9, 48),
-    (120, 10, 48),
-    (120, 11, 48),
 )
 
 
