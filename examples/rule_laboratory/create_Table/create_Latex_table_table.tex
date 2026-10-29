@@ -1,0 +1,79 @@
+
+% ==========================================================
+% CUDAHeat Enrichment Rules Catalogue
+%
+% Automatically generated from YAML definitions.
+%
+% Required packages:
+%   tabularray
+%   xcolor
+%   amsmath
+%   amssymb
+%
+% Required colors:
+%   header
+%   ruleline
+%   metadata
+%   rowshade
+%
+% Column widths:
+%   Long name       20%
+%   Formula         32%
+%   Description     24%
+%   Interpretation  24%
+%
+% ==========================================================
+
+\begin{longtblr}[
+    caption = {CUDAHeat --- Enrichment Rules Catalogue},
+    entry = {CUDAHeat enrichment rules catalogue},
+    label = {tab:cudaheat-rules},
+]{
+    colspec = {
+        |Q[l,h,wd=0.20\textwidth]
+        |Q[c,m,wd=0.32\textwidth]
+        |Q[l,h,wd=0.24\textwidth]
+        |Q[l,h,wd=0.24\textwidth]|
+    },
+    rowhead = 1,
+    hlines = {ruleline},
+    vlines = {ruleline},
+    colsep = 5pt,
+    rowsep = 2pt,
+    row{even} = {bg=rowshade},
+    row{1} = {
+        bg=header,
+        fg=white,
+        font=\bfseries,
+        valign=m,
+    },
+    cell{1}{2} = {halign=c},
+    cell{2-Z}{2} = {halign=c,font=\scriptsize},
+}
+Long name & Formula & Description & Interpretation \\
+{\footnotesize\textbf{$F_T$} ([-])}\par\vspace{2pt}\textbf{Threshold exceedance}\,--\,Fraction of event hours above the climatological threshold\par\vspace{2pt}{\scriptsize\color{metadata}\textbf{Cat}: persistence, threshold exceedance} &
+\resizebox{0.98\linewidth}{!}{$\displaystyle F_T = \frac{   \displaystyle\sum_{t=t_s}^{t_e}   \mathbf{1}   \left[     SST_{p,t} > T_{p,h(t)}   \right]   \mathbf{1}_{\mathrm{valid}}(p,t) }{   \displaystyle\sum_{t=t_s}^{t_e}   \mathbf{1}_{\mathrm{valid}}(p,t) }$} &
+Fraction of valid hourly observations within a detected marine heatwave event for which SST exceeds the corresponding climatological percentile threshold. &
+Values approaching 1 indicate persistent threshold exceedance throughout the event. Lower values indicate a larger contribution from below-threshold periods, such as internal gaps or joined event segments. \\
+{\footnotesize\textbf{$DSEF$} ([-])}\par\vspace{2pt}\textbf{Daytime strong exceedance fraction}\,--\,Fraction of daytime event hours exceeding 1.5 times the climatological threshold anomaly\par\vspace{2pt}{\scriptsize\color{metadata}\textbf{Cat}: diurnal cycle, daytime intensity} &
+\resizebox{0.98\linewidth}{!}{$\displaystyle DSEF = \frac{   \displaystyle\sum_{t=t_s}^{t_e}   \mathbf{1}_{\mathrm{day}}(p,t)   \mathbf{1}   \left[     SST_{p,t} >     C_{p,h(t)} + 1.5     \left(T_{p,h(t)}-C_{p,h(t)}\right)   \right]   \mathbf{1}_{\mathrm{valid}}(p,t) }{   \displaystyle\sum_{t=t_s}^{t_e}   \mathbf{1}_{\mathrm{day}}(p,t)   \mathbf{1}_{\mathrm{valid}}(p,t) }$} &
+Fraction of valid daytime hourly SST observations during a marine heatwave event exceeding 1.5 times the difference between the climatological threshold and climatological mean. Daytime is defined as 06:00–20:00 local solar time, calculated from UTC timestamps and longitude. &
+Values approaching 1 indicate frequent strong daytime thermal exceedances. Values approaching 0 indicate that daytime SST rarely reaches 1.5 times the climatological threshold anomaly. This metric measures the frequency of strong daytime warming rather than its absolute magnitude. \\
+{\footnotesize\textbf{$HC$} ([$^\circ$C h])}\par\vspace{2pt}\textbf{Heat Content}\,--\,Cumulative thermal exceedance above the climatological threshold\par\vspace{2pt}{\scriptsize\color{metadata}\textbf{Cat}: intensity, cumulative exceedance} &
+\resizebox{0.98\linewidth}{!}{$\displaystyle HC = \sum_{t=t_s}^{t_e} \max\left(SST_{p,t}-T_{p,h(t)},0\right)\Delta t$} &
+Cumulative positive SST anomaly above the climatological 90th-percentile threshold over the entire marine heatwave event. &
+Higher values indicate greater accumulated thermal intensity. Hours below threshold contribute zero, including internal gaps and periods joining separate exceedance segments. \\
+{\footnotesize\textbf{$NBCF$} ([-])}\par\vspace{2pt}\textbf{Nocturnal below-climatology fraction}\,--\,Fraction of nighttime event hours below the climatological mean\par\vspace{2pt}{\scriptsize\color{metadata}\textbf{Cat}: diurnal cycle, nocturnal recovery} &
+\resizebox{0.98\linewidth}{!}{$\displaystyle NBCF = \frac{   \displaystyle\sum_{t=t_s}^{t_e}   \mathbf{1}_{\mathrm{night}}(p,t)   \mathbf{1}[SST_{p,t}<C_{p,h(t)}]   \mathbf{1}_{\mathrm{valid}}(p,t) }{   \displaystyle\sum_{t=t_s}^{t_e}   \mathbf{1}_{\mathrm{night}}(p,t)   \mathbf{1}_{\mathrm{valid}}(p,t) }$} &
+Fraction of valid nighttime hourly SST observations during a marine heatwave event that fall below the corresponding hourly climatological seasonal mean. Nighttime is defined as 20:00–06:00 local solar time, calculated from UTC timestamps and longitude. &
+Values approaching 1 indicate frequent nighttime SST conditions cooler than the climatological seasonal mean. Values approaching 0 indicate that nighttime SST generally remains above normal climatological conditions. This metric measures the frequency of nocturnal recovery below climatology, not the magnitude of cooling. \\
+{\footnotesize\textbf{$NBTF$} ([-])}\par\vspace{2pt}\textbf{Nocturnal below-threshold fraction}\,--\,Fraction of nighttime event hours below the climatological threshold\par\vspace{2pt}{\scriptsize\color{metadata}\textbf{Cat}: diurnal cycle, nocturnal recovery} &
+\resizebox{0.98\linewidth}{!}{$\displaystyle NBTF = \frac{   \displaystyle\sum_{t=t_s}^{t_e}   \mathbf{1}_{\mathrm{night}}(p,t)   \mathbf{1}[SST_{p,t}<T_{p,h(t)}]   \mathbf{1}_{\mathrm{valid}}(p,t) }{   \displaystyle\sum_{t=t_s}^{t_e}   \mathbf{1}_{\mathrm{night}}(p,t)   \mathbf{1}_{\mathrm{valid}}(p,t) }$} &
+Fraction of valid nighttime hourly SST observations during a marine heatwave event that fall below the corresponding climatological percentile threshold. Nighttime is defined as 20:00–06:00 local solar time, calculated from UTC timestamps and longitude. &
+Values approaching 1 indicate frequent nighttime interruption of marine heatwave conditions. Values approaching 0 indicate persistent nighttime threshold exceedance. This metric measures the frequency of below-threshold conditions, not the magnitude of cooling. \\
+{\footnotesize\textbf{$NDHR$} ([-])}\par\vspace{2pt}\textbf{Nocturnal Daytime Heat Retention}\,--\,Fraction of nights exceeding the preceding daytime maximum threshold\par\vspace{2pt}{\scriptsize\color{metadata}\textbf{Cat}: diurnal cycle, nocturnal heat retention} &
+\resizebox{0.98\linewidth}{!}{$\displaystyle NDHR = \frac{1}{N} \sum_{n=1}^{N} \mathbf{1} \left[   \min_{t \in \mathcal{N}_n} SST_t   >   \max_{t \in \mathcal{D}_n} T_t \right]$} &
+Measures the fraction of complete nights during which SST remains continuously above the maximum climatological threshold of the preceding daytime period. Daytime is defined as 06:00–20:00 local solar time. Nighttime is defined as 20:00–06:00 local solar time. For each night, the reference is the maximum hourly climatological threshold observed during the preceding day. A night qualifies only if every nighttime SST observation strictly exceeds this daytime maximum threshold. &
+Values approaching 1 indicate that SST frequently remains above the preceding daytime maximum threshold throughout the entire night. Values approaching 0 indicate that nocturnal SST frequently falls below the preceding daytime maximum threshold. A value of 1 indicates that all complete valid nights satisfy the thermal retention condition. This metric measures sustained nocturnal thermal intensity relative to the preceding daytime threshold, rather than ordinary nighttime threshold exceedance. \\
+
+\end{longtblr}

@@ -66,3 +66,6 @@ validation-results/
 /LaTex/**/*.sav
 /LaTex/**/*~
 
+# Local TikZ figure tests
+/LaTex/tikz/test/
+

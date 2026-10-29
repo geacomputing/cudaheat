@@ -310,7 +310,7 @@ def write_event_plots(
             axis.set(
                 title=(
                     f"CUDAHeat event {int(event_id)} | point {event_points[position]} | "
-                    f"{event_stop - event_start} h ({(event_stop - event_start)/24} decimal days)"
+                    f"{event_stop - event_start} h ({(event_stop - event_start)/24:.2f} decimal days)"
                 ),
                 xlabel="Time",
                 ylabel="Temperature (°C)",

@@ -1,34 +1,5 @@
- This study presents a methodology for detecting, analysing, and classifying Marine heatwaves (MHWs) at hourly resolution.
-MHWs are traditionally identified from daily Sea Surface Temperature (SST)
-records, yet this framework does not transfer directly to higher temporal resolution. At hourly scale,
-SST reveals sub-daily variability that is largely smoothed out in daily means, including intermittent
-threshold exceedances, short-lived interruptions, diurnal cycling, and nocturnal heat retention. These
-features complicate the definition of event continuity and persistence, but also provide an opportunity
-to examine the internal structure of marine heat extremes in substantially greater detail.
+Marine heatwaves are conventionally detected from daily sea-surface-temperature (SST) products, an approach that obscures the threshold crossings, interruptions and persistence that occur within the diurnal cycle. We present CUDAHeat, a GPU-native Python framework for detecting and characterising marine heatwaves in contiguous hourly SST records. The framework constructs a seasonally and diurnally resolved reference state by pooling same-clock-hour observations in a calendar window, estimating a percentile threshold and applying same-hour circular smoothing. It then distinguishes raw threshold exceedance from event continuity: short bounded interruptions may be filled, candidate intervals are filtered by a minimum duration, and neighbouring qualifying intervals may be joined according to explicitly reported temporal rules.
 
-\noindent
-Events are identified through a duration--gap framework that preserves short interruptions while
-maintaining event continuity, and are subsequently decomposed into individual diurnal cycles. Their
-intra-event morphology is used to construct an hourly-scale taxonomy that characterises MHWs not only
-in terms of conventional duration and intensity, but also through persistence, interruption structure,
-cycle-to-cycle evolution, diurnal heating, nocturnal retention, and other sub-daily dynamics that are
-not accessible from daily observations. To enable the methodology to scale from individual time
-series to multi-year gridded SST datasets, a GPU-accelerated implementation, \texttt{CUDAHeat}, is
-developed using CUDA-enabled array computation. The computational architecture preserves the complete
-temporal record of each spatial point while partitioning only the spatial domain into dynamically sized
-batches according to available GPU memory. VRAM-aware batch adaptation, automatic out-of-memory
-recovery, and explicit support for both 32-bit and 64-bit floating-point computation allow the same
-workflow to operate across different GPU memory capacities without altering the temporal definition
-of an event.
+CUDAHeat preserves the complete temporal record of every spatial point and batches only the spatial domain, thereby avoiding changes in event definition at computational boundaries. Detection returns a sparse event catalogue with timestamp-resolved intervals, while optional lazy reconstruction provides dense event identifiers only when required. A versioned YAML enrichment system evaluates event-aligned metrics, including threshold occupancy, cumulative exceedance, diurnal amplification and nocturnal retention. These descriptors represent each event as a transparent multivariate feature vector suitable for subsequent normalized-scalar analysis, principal component analysis and scatterplot-based exploration without imposing a fixed classification.
 
-\noindent Benchmarking on a hourly gridded SST dataset comprising approximately 1.16 billion values
-shows a $23.4\times$ acceleration of the core computation using GPU 32-bit arithmetic relative to the
-CPU 64-bit reference, with a $15.9\times$ speedup for the complete processing pipeline. Scientific
-validation yields approximately $99.9991\%$ agreement in threshold-exceedance classification across
-tens of millions of comparisons, with the remaining differences confined predominantly to values
-extremely close to the detection threshold. These results demonstrate that the hourly framework can
-retain its temporal and taxonomic detail while remaining computationally tractable for substantially
-larger spatial datasets. This combination of an hourly event taxonomy with scalable GPU computation provides a framework for
-investigating marine heat extremes from their conventional daily representation down to their
-sub-daily structure, and establishes a basis for subsequent analysis of coupled marine--atmospheric
-heat extremes and coastal thermal stress.
+By separating climatology construction, temporal event rules and enrichment provenance, CUDAHeat provides a reproducible basis for analysing the sub-daily morphology of marine thermal extremes. The framework is intended to support scientifically explicit comparison of hourly events across SST products, regions and applications while retaining the full temporal detail needed to investigate diurnal structure and thermal persistence.

@@ -15,7 +15,33 @@ DEFAULT_POSTGRES_CONFIG = PROJECT_ROOT / "config/postgres.ini"
 # Ordered so a short test run varies gap/join settings immediately. All share
 # the same climatology configuration and therefore reuse one Zarr product.
 TEST_CONFIGURATIONS = (
-    (120, 14, 24),
+    # Join gap = 12 h
+    (120, 4, 12),
+    (120, 5, 12),
+    (120, 6, 12),
+    (120, 7, 12),
+    (120, 8, 12),
+    (120, 9, 12),
+    (120, 10, 12),
+    (120, 11, 12),
+    (120, 12, 12),
+    (120, 14, 12),
+
+    # Join gap = 24 h
+    (120, 3, 24),
+    (120, 4, 24),
+    (120, 5, 24),
+    (120, 7, 24),
+    (120, 8, 24),
+    (120, 9, 24),
+    (120, 10, 24),
+    (120, 11, 24),
+    (120, 12, 24),
+
+    # Join gap = 48 h
+    (120, 3, 48),
+    (120, 6, 48),
+    (120, 14, 48),
 )
 
 

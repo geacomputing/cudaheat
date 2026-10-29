@@ -32,7 +32,7 @@ The strict inequality is intentional: observations equal to the threshold are no
 
 The detector first fills only internal false runs bounded on both sides by exceedances and no longer than \code{max_internal_gap_hours}; the default is 6 h. Maximal true intervals are then extracted from this filled mask and retained when their duration is at least \code{min_duration_hours}, which defaults to 120 h. Finally, neighbouring duration-qualified intervals at the same spatial point are joined when their separating gap does not exceed \code{join_gap_hours}, which defaults to 48 h. The order of these operations is consequential: duration filtering precedes joining, and the joining operation acts on sparse intervals rather than on a dense label field.
 
-The following parameter table summarizes the user-modulable settings that define the hourly reference and the temporal event rule. These values should be treated as an explicit analytical configuration, not as universally transferable constants.
+Table~\ref{tab:parameter-settings} summarizes the user-modulable settings that define the hourly reference and the temporal event rule. These values should be treated as an explicit analytical configuration, not as universally transferable constants.
 
 \begin{table*}[t]
 \centering
@@ -59,8 +59,9 @@ Parameter & Default & Permitted setting & Scientific role \\
 \bottomrule
 \end{tabularx}
 \rowcolors{2}{}{}
-\par\vspace{3pt}
-\parbox{\textwidth}{\sffamily\small\textbf{Parameter settings.}\enspace User-modulable CUDAHeat parameters governing climatology construction and event detection; values shown are the current defaults.}
+\refstepcounter{table}
+\label{tab:parameter-settings}
+\par\noindent\textbf{Table~\thetable:}\enspace User-modulable CUDAHeat parameters governing climatology construction and event detection; values shown are the current defaults.
 \end{table*}
 
 \subsection{Event Representation}

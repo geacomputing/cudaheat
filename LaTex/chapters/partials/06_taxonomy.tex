@@ -16,34 +16,46 @@ where $x_{ij}$ is the $j$th scalar derived for the event and $\tilde{x}_{ij}$ is
 
 PCA can then be applied to the complete, normalized descriptor matrix to identify orthogonal directions of maximal variance. Component scores provide a low-dimensional projection for exploration, whereas loadings identify which standardized descriptors contribute to each component. PCA is descriptive rather than a proof of discrete event types: its interpretation requires reporting the event-selection criteria, transformations, normalization reference set, retained components and explained variance. Missing descriptors should be handled by a declared complete-case or imputation procedure before fitting, rather than being implicitly discarded by plotting software.
 
-\subsection{YAML Rule Catalogues}
+\subsection{Taxonomic rules}
 
 Each enrichment rule is a YAML document with a stable identifier, semantic version, short and long names, mathematical formula, symbol definitions, category metadata and output specification. The output specification declares a name, unit, range and dimensions. The rule document also contains a Python \code{calculate} function. At discovery, CUDAHeat validates the schema, rejects duplicate identifiers or output names, compiles the function and records a SHA-256 hash of the source document. This design couples an event variable to its precise mathematical and computational definition.
 
 The explicit formula and symbol metadata are intended to make the taxonomic catalogue suitable for scientific reporting. A rule is not merely a column added to an event table: it is a versioned hypothesis about which aspect of event morphology is informative. The catalogue should consequently be curated with the same care as the detection configuration, including unit consistency, handling of missing values and the physical interpretation of extrema or thresholds.
 
-\subsection{Current Rule Catalogue}
 
 The rule catalogue is presented in Table~\ref{tab:cudaheat-rules}. It is generated directly from the YAML rule specifications in the rule directory and typeset by \code{create_Latex_table.tex}. The catalogue documents the rule symbols, units, formulas, descriptions and interpretations used in the current implementation.
 
 \clearpage
-\refstepcounter{table}
-\label{tab:cudaheat-rules}
-\includepdf[
-    pages=-,
-    fitpaper=true,
-    pagecommand={\thispagestyle{plain}}
-]{../examples/rule_laboratory/create_Table/create_Latex_table.pdf}
+\onecolumn
+\newgeometry{margin=8mm}
+\pagestyle{empty}
+\begin{landscape}
+\small
+\begingroup
+\SetTblrTemplate{firsthead}{empty}
+\SetTblrTemplate{middlehead}{empty}
+\SetTblrTemplate{lasthead}{empty}
+\DefTblrTemplate{lastfoot}{cudaheat-caption}{\par\vspace{3pt}\UseTblrTemplate{caption}{default}}
+\SetTblrTemplate{lastfoot}{cudaheat-caption}
+\DefTblrTemplate{caption-tag}{cudaheat-bold}{\textbf{\tablename\hspace{0.25em}\thetable}}
+\SetTblrTemplate{caption-tag}{cudaheat-bold}
+\input{../examples/rule_laboratory/create_Table/create_Latex_table_table.tex}
+\endgroup
+\end{landscape}
 \clearpage
+\restoregeometry
+\pagestyle{plain}
+\twocolumn
+
 
 \subsection{Rule Evaluation}
 
-\noindent\textbf{Integrated and standalone enrichment.}
+Rules are evaluated only after the final event intervals have been established, ensuring that every derived scalar refers to the same catalogue used for subsequent statistical analysis. Integrated enrichment is invoked through \code{detect()} and operates on device-resident spatial batches. SST, climatology and threshold fields are shared among all selected rules, while interval reductions are performed from the sparse start and stop indices. This avoids a second read of the numerical fields and avoids Python-level iteration over individual events.
 
-Integrated enrichment is invoked during \code{detect()} and evaluates rules on device-resident batches after final event intervals have been determined. This avoids a second read of SST and annual-cycle fields. The standalone \code{enrich()} path supports retrospective application of rules to an existing sparse result. It reads the optimized source and cached cycles in storage-local batches, constructs aligned fields only when requested and evaluates interval reductions without iterating over individual events in Python.
+The standalone \code{enrich()} pathway supports retrospective evaluation of a new rule catalogue on an existing detection result. It reconstructs storage-local contexts from the optimized source and annual-cycle caches, loads only the spatial batches required by the corresponding events and attaches one output value per event. The integrated and standalone pathways therefore produce the same logical product---a rule-defined, event-aligned scalar---while differing only in the point at which the required numerical arrays are available.
 
-Because a YAML rule embeds executable Python, rule directories are trusted extensions of the analysis environment. Schema validation confirms structure and declared metadata; it cannot establish scientific validity or prevent intentional side effects in arbitrary code. Reproducible use therefore requires version control of the rule directory, review of the embedded calculation and preservation of the recorded rule hashes.
+Rule discovery validates the YAML schema, checks the uniqueness of rule identifiers and output names, and compiles the declared \code{calculate} function. Because a rule contains executable Python, its directory is a trusted extension of the analysis environment rather than passive metadata. Schema validation verifies the declared structure, but cannot establish the scientific validity or operational safety of arbitrary code. Reproducible use consequently requires version control of the rule directory, review of the calculation and preservation of the source hash.
 
-\noindent\textbf{Rule provenance and event-aligned outputs.}
+Each output is appended to the sparse event catalogue under a stable variable name. The accompanying provenance records the rule identifier, semantic version, source path, SHA-256 hash, formula, output declaration and evaluation timing. This establishes a direct link between a taxonomic scalar and the exact executable definition that produced it, and prevents values generated by revised rules from being silently merged with those produced by an earlier version.
 
-Rule outputs are attached to the sparse event catalogue using stable output names. The result metadata records the identifier, version, path, hash, formula and output declaration for every evaluated rule, together with enrichment timing information. This provenance permits a table of event descriptors to be traced back to the exact algorithm and configuration used for its production. It also makes it possible to repeat an enrichment analysis after a rule revision without overwriting or ambiguously merging measurements from different rule versions.
+

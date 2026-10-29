@@ -37,6 +37,27 @@ Matplotlib dependency if needed with `pip install -e '.[postgres,plot]'`.
 The dashed daily-mean threshold line is enabled by default; disable it with
 `--no-daily-mean-threshold`.
 
+## TikZ event figure export
+
+`latex_event_figure.py` writes a CSV file plus an importable `figure*` TikZ
+fragment for one point-event. The fragment spans both document columns, keeps
+the line labels below the plotting area, and places detection settings and all
+rule outputs in a side panel. It includes 12 h of context by default. If `--event-id` is omitted, the latest event at
+the requested point is exported.
+
+```bash
+PYTHONPATH=src python examples/rule_laboratory/latex_event_figure.py \
+  --run-id YOUR-RUN-UUID \
+  --point-index 384 \
+  --event-id 12
+```
+
+Files are written to `LaTex/figures/generated/` by default and can be included
+from `cudaHeat.tex` with `\input{figures/generated/event-000012_point-384.tex}`.
+The document palette defines the semantic TikZ colours `SSTLine`,
+`ThresholdLine`, `ClimatologyLine`, and `EventShade` centrally in
+`LaTex/class/cudaheat-colors.tex`.
+
 The supplied rules demonstrate threshold-fraction and local-time enrichment
 calculations using context fields plus `context.sum(...)` and
 `context.count(...)`. They are not persisted and do not affect production

@@ -1,0 +1,211 @@
+id: nocturnal_daytime_heat_retention
+version: "1.0.0"
+
+short_name: Nocturnal Daytime Heat Retention
+long_name: Fraction of nights exceeding the preceding daytime maximum threshold
+
+symbol: NDHR
+
+category:
+  primary: diurnal_cycle
+  secondary: nocturnal_heat_retention
+
+description: >
+  Measures the fraction of complete nights during which SST
+  remains continuously above the maximum climatological
+  threshold of the preceding daytime period.
+
+  Daytime is defined as 06:00–20:00 local solar time.
+  Nighttime is defined as 20:00–06:00 local solar time.
+
+  For each night, the reference is the maximum hourly
+  climatological threshold observed during the preceding day.
+
+  A night qualifies only if every nighttime SST observation
+  strictly exceeds this daytime maximum threshold.
+
+interpretation: >
+  Values approaching 1 indicate that SST frequently remains
+  above the preceding daytime maximum threshold throughout
+  the entire night.
+
+  Values approaching 0 indicate that nocturnal SST frequently
+  falls below the preceding daytime maximum threshold.
+
+  A value of 1 indicates that all complete valid nights
+  satisfy the thermal retention condition.
+
+  This metric measures sustained nocturnal thermal intensity
+  relative to the preceding daytime threshold, rather than
+  ordinary nighttime threshold exceedance.
+
+formula_latex: |
+  NDHR =
+  \frac{1}{N}
+  \sum_{n=1}^{N}
+  \mathbf{1}
+  \left[
+    \min_{t \in \mathcal{N}_n} SST_t
+    >
+    \max_{t \in \mathcal{D}_n} T_t
+  \right]
+
+symbols:
+  NDHR: "Nocturnal Daytime Heat Retention"
+  N: "Number of complete valid day-night windows"
+  SST_t: "Observed hourly SST"
+  T_t: "Climatological hourly threshold"
+  mathcal_N_n: "Nighttime window from 20:00 to 06:00"
+  mathcal_D_n: "Preceding daytime window from 06:00 to 20:00"
+
+output:
+  name: nocturnal_daytime_heat_retention
+  unit: dimensionless
+  range: [0.0, 1.0]
+  dimensions: [event]
+
+python: |
+  def calculate(context):
+      xp = context.xp
+
+      sst = context.sst
+      threshold = context.threshold
+
+      starts = context.starts
+      stops = context.stops
+      columns = context.columns
+
+      nevents = starts.size
+
+      result = xp.full(
+          nevents,
+          xp.nan,
+          dtype=xp.float64,
+      )
+
+      total_nights = xp.zeros(
+          nevents,
+          dtype=xp.int32,
+      )
+
+      qualifying_nights = xp.zeros(
+          nevents,
+          dtype=xp.int32,
+      )
+
+      # UTC timestamps expressed as consecutive hourly indices.
+      utc_hours = context.timestamps.astype(
+          "datetime64[h]"
+      ).astype("int64")
+
+      longitudes = context.longitude
+
+      for event in range(nevents):
+
+          start = int(starts[event])
+          stop = int(stops[event])
+          column = int(columns[event])
+
+          event_sst = sst[start:stop, column]
+          event_threshold = threshold[start:stop, column]
+
+          longitude = float(longitudes[column])
+
+          # Continuous local solar time.
+          local_time = (
+              utc_hours[start:stop].astype("float64")
+              + longitude / 15.0
+          )
+
+          local_day = xp.floor(
+              local_time / 24.0
+          ).astype(xp.int64)
+
+          local_hour = xp.mod(local_time, 24.0)
+
+          n_total = 0
+          n_qualified = 0
+
+          for day in range(
+              int(local_day[0]),
+              int(local_day[-1]) + 1
+          ):
+
+              # Preceding daytime: [06:00, 20:00).
+              daytime = (
+                  (local_day == day)
+                  & (local_hour >= 6.0)
+                  & (local_hour < 20.0)
+              )
+
+              # Following night: [20:00, 06:00).
+              nighttime = (
+                  (
+                      (local_day == day)
+                      & (local_hour >= 20.0)
+                  )
+                  |
+                  (
+                      (local_day == day + 1)
+                      & (local_hour < 6.0)
+                  )
+              )
+
+              day_indices = xp.where(daytime)[0]
+              night_indices = xp.where(nighttime)[0]
+
+              # Require complete 14-hour daytime and
+              # complete 10-hour nighttime windows.
+              if day_indices.size != 14:
+                  continue
+
+              if night_indices.size != 10:
+                  continue
+
+              # Require consecutive hourly observations.
+              day_utc = utc_hours[start:stop][day_indices]
+              night_utc = utc_hours[start:stop][night_indices]
+
+              if not bool(xp.all(xp.diff(day_utc) == 1)):
+                  continue
+
+              if not bool(xp.all(xp.diff(night_utc) == 1)):
+                  continue
+
+              day_threshold = event_threshold[day_indices]
+              night_sst = event_sst[night_indices]
+
+              # All observations must be finite.
+              valid = (
+                  xp.all(xp.isfinite(day_threshold))
+                  & xp.all(xp.isfinite(night_sst))
+              )
+
+              if not bool(valid):
+                  continue
+
+              n_total += 1
+
+              # Maximum threshold during preceding day.
+              daytime_max_threshold = xp.max(day_threshold)
+
+              # Minimum SST during following night.
+              nighttime_min_sst = xp.min(night_sst)
+
+              # Entire night must exceed daytime maximum.
+              if bool(
+                  nighttime_min_sst > daytime_max_threshold
+              ):
+                  n_qualified += 1
+
+          total_nights[event] = n_total
+          qualifying_nights[event] = n_qualified
+
+          if n_total > 0:
+              result[event] = n_qualified / n_total
+
+      return {
+          "value": result,
+          "total_nights": total_nights,
+          "qualifying_nights": qualifying_nights,
+      }
