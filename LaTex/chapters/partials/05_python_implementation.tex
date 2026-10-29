@@ -1,0 +1,27 @@
+\section{Python Implementation}
+
+\subsection{Package Architecture and Public API}
+
+CUDAHeat is implemented as a Python package with a narrow public interface and separable numerical components. \code{core.py} orchestrates input preparation, device execution and result assembly; \code{climatology.py} and \code{detection.py} contain the numerical kernels; \code{result.py} defines sparse event accessors; and \code{enrichment.py} evaluates extensible event rules. The top-level \code{CUDAHeat} class provides \code{run()}, \code{climatology()}, \code{thresholds()}, \code{mask()}, \code{detect()} and \code{validate()} methods. The distinction between generic field production and event detection prevents allocation of full timestamp-aligned fields when only a compact event catalogue is needed.
+
+The software uses CuPy for production GPU arrays but retains a NumPy reference path for numerical diagnostics. Device availability is required when constructing \code{CUDAHeat}, whereas importing the package does not itself require CuPy. This design permits workflows that inspect results, post-process catalogues or validate stored outputs on systems without a CUDA runtime.
+
+\subsection{NetCDF and xarray Input Handling}
+
+The I/O layer resolves the temporal coordinate, identifies spatial dimensions and preserves coordinate information needed to reconstruct the original grid. A source may be opened eagerly or through Dask-backed xarray reads. Lazy I/O constrains host-side read memory; it does not alter the complete-time requirement of the GPU calculation. Each spatial batch still contains every timestamp for its selected points, and data are converted to the explicit analysis precision before device execution.
+
+\subsection{Point-Layout Optimization and Input Caching}
+
+For a conventional gridded NetCDF file, the preprocessing layer can write a compact cache in which spatial dimensions have been stacked into point. The cache is separate from the raw archive and records source identity and layout metadata. It is therefore an optimization of access pattern rather than a replacement scientific data product. The option \code{input_optimization="auto"} uses an existing compatible point layout or prepares one; \code{"skip"} retains direct input handling, whereas \code{"require"} rejects an unoptimized grid.
+
+Compact climatology and threshold cycles can likewise be stored in a Zarr cache for compatible optimized path inputs. The cache contains the small annual-cycle fields rather than a dense timestamp-aligned threshold field, preserving the memory advantage of the cyclic representation. Cache keys incorporate the baseline, percentile, smoothing choices, calendar mode and source metadata so that changes to the analytical definition invalidate reuse.
+
+\subsection{GPU Batching and VRAM Management}
+
+The executor transfers complete-time spatial batches to the selected CUDA device. When \code{batch_size="guess"}, an initial size is selected from a conservative fraction of free VRAM; an explicit positive batch size may also be supplied. A configurable safety reserve, 15\% by default, is retained from currently free memory. If a device out-of-memory exception occurs, the failed batch is released, its spatial width is reduced and the same spatial subset is retried. No time axis is partitioned during this recovery.
+
+Although the API accepts selected device identifiers, the current implementation executes batches sequentially on the first selected device. Telemetry records host read, host preparation, transfer and GPU timings per batch, together with retry information and the active batch size. These diagnostics are operational metadata, not substitutes for scientific validation of the SST product or the event definition.
+
+\subsection{xarray Event Products and PostgreSQL Persistence}
+
+Results are represented as xarray datasets so that event tables, point coordinates and metadata remain interoperable with the scientific Python ecosystem. The optional PostgreSQL layer persists run metadata, spatial-point identities, sparse events and enrichment values. It does not persist the original SST cube or dense climatology arrays. Stored runs include a reproducible fingerprint derived from the detection configuration, source identity and rule catalogue; rule versions and content hashes provide an auditable link between an enrichment output and the executable specification that produced it.

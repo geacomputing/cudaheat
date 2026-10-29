@@ -1,0 +1,17 @@
+\section{Why Move from Daily to Hourly Data}
+
+\subsection{Limitations of Daily Aggregation}
+
+Daily averaging is a temporal filter. It can reduce the influence of retrieval noise and provide a natural representation of persistent weather-scale anomalies, but it also combines daytime heating and nocturnal cooling into a single statistic. A daily mean may remain below a daily threshold despite a sustained daytime exceedance, or may remain above it while part of the diurnal cycle is below the appropriate hourly threshold. Consequently, the event boundary inferred from daily data is not generally equivalent to the boundary inferred from the underlying hourly series.
+
+This distinction is particularly consequential near event onset and termination. At these transitions, the classification of a small number of hours can determine whether adjacent periods form one event or several events. The loss of phase information also prevents a direct assessment of whether thermal persistence is maintained overnight, whether extremes are concentrated near the daytime maximum, or whether a nominally continuous warm period contains recurrent sub-daily interruptions.
+
+\subsection{Sub-Daily Marine Heatwave Dynamics}
+
+Hourly observations resolve the diurnal cycle as part of the local climatological signal rather than as residual variability. The relevant comparison is therefore between an observation and a threshold for the same calendar phase and clock hour, not between an hourly observation and a daily reference. This enables event descriptors to distinguish, for example, frequent strong daytime exceedances from persistent nocturnal threshold retention. Such descriptors are complementary to conventional duration and intensity metrics: they describe the temporal organisation of thermal stress within an event.
+
+The increased resolution also requires a more explicit treatment of continuity. Short sequences below threshold may reflect a physically relevant interruption, an observation gap or the expected nightly phase of a diurnal cycle. CUDAHeat represents these alternatives through independently specified internal-gap and joining rules, so that the analytical assumptions are visible in the event metadata rather than being embedded implicitly in temporal aggregation.
+
+\subsection{Hourly Data Requirements}
+
+The input time coordinate must be contiguous at hourly spacing. The framework validates this condition before detection because the duration and gap parameters are expressed in hours and are meaningful only on a regular time axis. SST values may contain \code{NaN}s; they are excluded from climatological statistics and do not satisfy the exceedance relation. The resulting event interpretation remains conditional on the observational product, including its retrieval physics, spatial resolution, gap structure and local-time convention. For gridded reconstructions of hourly SST, these considerations should be assessed before comparing event statistics across regions or data products \citep{Marullo2014}.

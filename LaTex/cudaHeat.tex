@@ -32,10 +32,13 @@
 \usepackage{subcaption}
 \usepackage{graphicx}
 \usepackage{minted}
+\usepackage{pdfpages}
+\usepackage{xurl}
 
 
 \usepackage{xcolor}
 \input{class/cudaheat-colors}
+\hypersetup{hidelinks}
 \usepackage{tabularx}
 % Preamble
 \usepackage{booktabs}
@@ -43,6 +46,9 @@
 \usepackage{array}
 
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\urlstyle{tt}
+\newcommand{\code}[1]{\nolinkurl{#1}}
+\setlength{\parindent}{0pt}
 
 
 \setminted[python]{
@@ -200,41 +206,24 @@ MHWs, SST, GPU, Taxonomy
 
 \maketitle
 
-\section{Introduction}
-\input{chapters/partials/Intro}
+\tableofcontents
+\clearpage
 
-
-\section{Architecture}
-\input{chapters/partials/Architecture}
-
-\section{Benchmark and Sensitivity Analysis}
-\input{chapters/partials/Benchmark}
-
-
-\section{Methodology}
-\input{chapters/partials/Methodology}
-
-
-\section{Taxonomy}
-\subsection{Single-cycle}
-\subsection{Total-cycle}
-
-
-\section{Results}
-Some Results
-
-\section{Conclusions}
-\noindent Some conclusions
-
-
-
-
-
-%Go new page
-\cleardoublepage
-%Add Appendix
-\appendix
-Some Appendix
+\input{chapters/partials/01_introduction}
+\input{chapters/partials/02_cudaheat}
+\input{chapters/partials/03_hourly_data}
+\input{chapters/partials/04_methodology}
+\input{chapters/partials/05_python_implementation}
+\input{chapters/partials/06_taxonomy}
+\clearpage
+\input{chapters/partials/07_results}
+\clearpage
+\input{chapters/partials/08_conclusions}
+\clearpage
+% \appendix
+% \input{chapters/partials/a_public_api}
+% \input{chapters/partials/b_rule_schema}
+% \input{chapters/partials/c_configuration}
 
 
 

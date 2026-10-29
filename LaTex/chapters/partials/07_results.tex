@@ -1,0 +1,25 @@
+\section{Results}
+
+\subsection{Hourly Event Detection}
+
+%The primary result of CUDAHeat is a timestamp-resolved event catalogue whose boundaries are determined from the hourly threshold relation and declared continuity parameters. For every spatial point, the catalogue stores the start and stop indices, start and end times, duration and event identifier; the result metadata retains the baseline, percentile, smoothing window, calendar mode and gap parameters. This representation makes the assumptions that determine an event boundary explicit and permits the same SST record to be re-analysed under alternative scientifically motivated parameter choices.
+
+%The hourly formulation resolves information that is unavailable after daily aggregation. The raw exceedance mask identifies the timing of threshold crossing, whereas the final interval records the continuity decision after short gaps, duration filtering and joining have been applied. These are distinct products. Reporting both the detection parameters and whether a subsequent metric is based on raw exceedance or final event membership is therefore necessary for an interpretable comparison of hourly marine heatwaves.
+
+\subsection{Taxonomic Classification}
+
+%Application of the enrichment catalogue produces event-aligned descriptors in the same sparse dataset as the event intervals. The resulting table can distinguish events with comparable duration but different sub-daily structure: for example, a high daytime strong-exceedance fraction may occur with frequent nocturnal recovery, while sustained nocturnal retention may occur without an equally large daytime peak. Heat-content and threshold-exceedance measures provide complementary information about cumulative thermal forcing and temporal occupancy above threshold.
+
+%The taxonomic result is deliberately multivariate. CUDAHeat does not assign a single categorical label unless such a classification is introduced by a subsequent analysis. Instead, the rule outputs provide a transparent feature space in which regional, ecological or process-based hypotheses can be tested. This avoids treating a software-level descriptor catalogue as evidence for a universal partition of marine heatwaves.
+
+\subsection{Feature-Space Results and Scatterplot Representation}
+
+%Scatterplots should treat each retained event as one observation in the declared descriptor space. Direct metric--metric plots retain physical units and are suitable when the relationship between two named scalars is the subject of inference. When a PCA projection is shown, the axes should be labelled as component scores, not as raw physical variables; the accompanying analysis should report the loadings and explained variance. A third descriptor may be represented by colour, symbol shape or faceting only when its scale, normalization and missing-data treatment are stated explicitly.
+
+%Overplotting can obscure the distribution of large event catalogues. Transparency, density estimates, hexagonal binning or stratified sampling may be used for visualization, but the population represented by the graphic must remain identifiable. Scatterplot separation alone should not be interpreted as a physically distinct class: apparent clusters may arise from scaling, correlated descriptors, sampling density or the event-selection rule. The raw rule outputs and the normalization parameters should therefore be retained with any PCA scores or graphical products.
+
+\subsection{Case Studies}
+
+%At event scale, \code{event_timeseries()} returns a padded time window containing SST, climatology, threshold, raw exceedance and event identifiers. These fields allow onset, interruption and termination to be inspected against the diurnally resolved reference state. At point scale, \code{point_timeseries()} and \code{point_events()} provide the corresponding local history and catalogue subset. Together, these products support case studies in which the event boundary and the derived taxonomy can be examined before they are aggregated spatially or temporally.
+
+%For regional analyses, the sparse catalogue can be filtered by date, duration or point index and reconstructed lazily only where a dense map is needed. The recommended reporting unit is therefore not solely an event count: it is the combination of source product, hourly climatology definition, detection configuration and versioned enrichment rules. This combination provides the context required to compare case studies without conflating differences in scientific definition with differences in observed thermal behaviour.

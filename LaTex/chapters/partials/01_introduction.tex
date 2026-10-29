@@ -1,0 +1,13 @@
+\section{Introduction}
+
+\subsection{Marine Heatwaves and Temporal Resolution}
+
+Marine heatwaves are commonly defined as discrete intervals during which sea-surface temperature (SST) exceeds a seasonally varying local threshold for a prescribed minimum duration \citep{Hobday2016}. This event-based formulation has enabled coherent assessment of changes in the frequency, duration and intensity of marine thermal extremes at global scale \citep{Oliver2018}. Its conventional implementation, however, is predominantly based on daily SST products. Daily aggregation is scientifically useful for synoptic-to-seasonal analyses, but it suppresses the temporal structure that governs threshold crossing at sub-daily resolution.
+
+At hourly resolution, a thermal anomaly is not a single daily value but a trajectory that may cross the climatological threshold repeatedly within one diurnal cycle. The timing, persistence and ordering of these crossings contain information about daytime warming, nocturnal recovery, transient interruption and event continuity. An hourly framework must therefore preserve the full temporal sequence while distinguishing physically meaningful short interruptions from changes in event state. This requirement motivates an event-detection formulation in which the climatological reference, threshold construction and temporal morphology are all resolved at the sampling interval of the observations.
+
+\subsection{Scope of This Work}
+
+This article presents CUDAHeat, a GPU-native Python framework for hourly SST climatology, event detection relative to a threshold, sparse event representation and rule-based event enrichment. The framework translates the conceptual hierarchy of marine-heatwave detection to gridded hourly data while retaining the complete time series at every spatial location. The emphasis is methodological: the objective is to provide a reproducible and inspectable route from SST input data to event catalogues and taxonomic descriptors, rather than to prescribe a universal set of ecological or regional thresholds.
+
+The manuscript first defines the rationale for resolving marine heatwaves at hourly cadence, then describes the numerical methodology, software implementation and enrichment architecture. Results are expressed as the scientific and computational products of the workflow: timestamp-resolved thresholds, sparse event intervals and event-aligned descriptors that support subsequent regional or process-based analysis.

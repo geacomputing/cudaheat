@@ -1,0 +1,17 @@
+\section{CUDAHeat}
+
+\subsection{Purpose and Scope}
+
+CUDAHeat is designed for gridded SST records in which the temporal dimension is complete and regularly sampled at hourly resolution. It computes a seasonally and diurnally resolved climatology, derives a percentile threshold, identifies threshold-exceedance events and returns their compact catalogue. The package also exposes the climatology, threshold and exceedance fields for applications whose output domain is sufficiently small to be held in host memory. The implementation accepts a NetCDF path or an already-open \code{xarray.Dataset}; the principal public object is \code{CUDAHeat}.
+
+The package separates three scientific products. First, the climatological cycle and percentile threshold constitute the reference state against which an observation is evaluated. Second, the detector converts the instantaneous exceedance relation into time intervals after explicitly applying rules for short internal gaps, minimum duration and event joining. Third, an optional enrichment stage calculates event-level quantities from versioned YAML rules. This separation avoids conflating the definition of an event with the metrics subsequently used to characterise it.
+
+\subsection{Design Principles}
+
+The central computational invariant is that CUDAHeat never partitions a time series. Spatial dimensions are stacked into a point dimension, and each GPU operation receives an array of shape $(T, P_b)$, where $T$ is the complete number of time steps and $P_b$ is the active spatial batch. Preserving $T$ is essential because temporal segmentation at batch boundaries would alter circular climatology, duration counting and gap logic. When memory is limiting, the package reduces only $P_b$; if a single complete time series cannot fit on the selected device, execution terminates with an explicit memory error rather than silently changing the analysis.
+
+Numerical operations are expressed against an array backend so that the same vectorized formulation can be evaluated with CuPy on the GPU and with NumPy for reference calculations. The production default is \code{float32}, whereas \code{float64} remains available when the precision requirements of a particular data product warrant the additional memory cost. Missing values are retained as missing throughout the climatological calculation and cannot be classified as threshold exceedances.
+
+\subsection{Processing Workflow}
+
+The standard workflow begins by preparing the input layout and resolving the temporal coordinate. CUDAHeat then assigns each timestamp to an hourly climatology bin, selects the requested baseline, estimates the climatological mean and percentile threshold, and aligns these cycles to the complete record. Detection produces a sparse catalogue indexed by spatial point and half-open time interval. The catalogue may be queried directly, reconstructed lazily as a dense event-ID field, or passed to the enrichment subsystem. This workflow makes the threshold definition, detection parameters, input preparation and enrichment provenance available as structured metadata alongside the event product.

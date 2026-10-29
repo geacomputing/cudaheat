@@ -1,16 +1,16 @@
 \subsection{Crucial Features}
-\subsubsection{Chunking along space}
+\noindent\textbf{Chunking along space.}
 The computational domain is partitioned exclusively along its spatial dimensions, while the complete
 temporal sequence associated with each spatial point is preserved.
 This constraint ensures that event continuity, persistence, and sub-daily temporal structure remain
 available throughout the calculation.
-\subsubsection{Batching and Out of Memory (OOM)}
+\noindent\textbf{Batching and out-of-memory recovery.}
 Spatial batches are dynamically adapted according to the GPU memory available at execution time,
 allowing the same workflow to operate across devices with different VRAM capacities.
 If an out-of-memory condition occurs, the batch size is reduced and the affected spatial subset is
 retried without truncating or partitioning its temporal record.
 
-\subsubsection{Conversion to Float 32}
+\noindent\textbf{Conversion to single precision.}
 Single-precision floating-point representation reduces both memory requirements and computational cost
 relative to double precision, allowing larger spatial batches to be processed on the GPU.
 The numerical impact of this conversion is explicitly evaluated against a double-precision CPU
@@ -18,13 +18,13 @@ reference to quantify any differences introduced by reduced precision.
 
 
 
-\subsubsection{Preserved Consistency}
+\noindent\textbf{Preserved consistency.}
 GPU-derived results are systematically compared with the reference CPU implementation to verify that
 computational acceleration does not materially alter the scientific outcome.
 Consistency is evaluated for intermediate fields, threshold-exceedance classifications, and derived
 quantities, with particular attention to differences close to the detection threshold.
 
-\subsubsection{Improved Performance}
+\noindent\textbf{Improved performance.}
 GPU execution substantially reduces the computational time required to process large hourly SST
 datasets compared with the corresponding CPU implementation.
 Performance is quantified through execution time, speedup, throughput, memory consumption, and the
