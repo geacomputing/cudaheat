@@ -1767,13 +1767,16 @@ def _temporal_analysis_panel(
                 "IconLayer",
                 id=f"temporal-run-{run_id}",
                 data=subset,
-                icon_atlas=MARKER_ICON_ATLAS,
+                # Constant strings must be marked explicitly: otherwise pydeck
+                # serializes them as JavaScript accessors (the ``data:`` URI
+                # then fails to parse in the browser).
+                icon_atlas=pdk.types.String(MARKER_ICON_ATLAS),
                 icon_mapping=MARKER_ICON_MAPPING,
                 get_icon="marker_icon",
                 get_position="[x, y]",
                 get_size="marker_size",
                 get_color="colour",
-                size_units="pixels",
+                size_units=pdk.types.String("pixels"),
                 size_min_pixels=7,
                 size_max_pixels=38,
                 coordinate_system=pdk.types.String("cartesian"),
