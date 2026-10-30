@@ -1,0 +1,63 @@
+\begin{figure*}[tbp]
+\centering
+\begin{minipage}[t]{0.72\textwidth}\vspace{0pt}
+\centering
+\begin{tikzpicture}[baseline=(current bounding box.north)]
+\begin{axis}[
+  width=\linewidth, height=0.25\textheight,
+  date coordinates in=x, xticklabel=\day.\month, xticklabel style={rotate=45,anchor=east},
+  xlabel={Date/Time (UTC)}, ylabel={SST ($^\circ$C)},
+  axis lines=left,
+  grid=major, grid style={draw=CUDAHeatGrid},
+  xtick distance=1, minor x tick num=1,
+  ymin=25.249978, ymax=29.879252,
+  legend style={at={(0.5,1.03)},anchor=south,legend columns=3,draw=none,font=\small},
+]
+\addplot[SSTLine,thick,no markers] table[x=time,y=sst,col sep=comma] {tikz/events/event-000004_point-0.csv};
+\addlegendentry{SST}
+\addplot[ThresholdLine,thin,opacity=1,no markers] table[x=time,y=threshold,col sep=comma] {tikz/events/event-000004_point-0.csv};
+\addlegendentry{Threshold}
+\addplot[ClimatologyLine,thin,no markers] table[x=time,y=climatology,col sep=comma] {tikz/events/event-000004_point-0.csv};
+\addlegendentry{Climatology}
+\end{axis}
+\end{tikzpicture}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.24\textwidth}\vspace{0pt}
+\footnotesize
+\textbf{Detection settings}\par\vspace{2pt}
+\begin{tabular}{@{}ll@{}}
+\textcolor{CUDAHeatSlate}{Duration} & 249 h \\
+\textcolor{CUDAHeatSlate}{Baseline} & 2019–2023 \\
+\textcolor{CUDAHeatSlate}{Percentile} & 90\% \\
+\textcolor{CUDAHeatSlate}{Internal gap} & 0 h \\
+\textcolor{CUDAHeatSlate}{Join gap} & 12 h \\
+\end{tabular}
+\par\vspace{5pt}\textbf{Normalized metrics}\par\vspace{2pt}
+\begin{tikzpicture}
+\begin{axis}[
+  xbar, width=\linewidth, height=3.10cm,
+  xmin=0, xmax=1, xtick={0,0.5,1}, minor x tick num=1,
+  ytick={0,1,2,3,4}, yticklabels={},
+  y dir=reverse, enlarge y limits=0.30,
+  axis x line*=bottom, axis y line=none,
+  ytick style={draw=none}, clip=false,
+  tick label style={font=\scriptsize},
+  xmajorgrids, grid style={draw=CUDAHeatGrid},
+  bar width=3.5pt,
+]
+\addplot[draw=none,fill=gray!60] coordinates {(1.0000,0) (1.0000,1) (0.0000,2) (0.0000,3) (1.0000,4)};
+\node[anchor=east,xshift=-3pt,font=\scriptsize,text=CUDAHeatSlate] at (axis cs:0,0) {$F_T$};
+\node[anchor=east,xshift=-3pt,font=\scriptsize,text=CUDAHeatSlate] at (axis cs:0,1) {$DSEF$};
+\node[anchor=east,xshift=-3pt,font=\scriptsize,text=CUDAHeatSlate] at (axis cs:0,2) {$NBCF$};
+\node[anchor=east,xshift=-3pt,font=\scriptsize,text=CUDAHeatSlate] at (axis cs:0,3) {$NBTF$};
+\node[anchor=east,xshift=-3pt,font=\scriptsize,text=CUDAHeatSlate] at (axis cs:0,4) {$NDHR$};
+\end{axis}
+\end{tikzpicture}
+\par\vspace{5pt}\textbf{Dimensional metrics}\par\vspace{2pt}
+\begin{tabular}{@{}ll@{}}
+\textcolor{CUDAHeatSlate}{$HC$} & 313.06 \\
+\end{tabular}
+\end{minipage}
+\caption{Hourly SST, climatological threshold and climatological mean for CUDAHeat event 4 (run \texttt{7b6805fd-6c65-406b-8916-7237c2a0b469}). Event period: July 2024.}
+\label{fig:event:7b6805fd-6c65-406b-8916-7237c2a0b469:4:point-0}
+\end{figure*}

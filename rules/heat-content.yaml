@@ -1,0 +1,59 @@
+id: heat_content
+version: "1.0.0"
+
+short_name: Heat Content
+long_name: Cumulative thermal exceedance above the climatological threshold
+
+symbol: HC
+
+category:
+  primary: intensity
+  secondary: cumulative_exceedance
+
+description: >
+  Cumulative positive SST anomaly above the climatological
+  90th-percentile threshold over the entire marine heatwave event.
+
+interpretation: >
+  Higher values indicate greater accumulated thermal intensity.
+  Hours below threshold contribute zero, including internal gaps
+  and periods joining separate exceedance segments.
+
+formula_latex: |
+  HC = \sum_{t=t_s}^{t_e}
+  \max\left(SST_{p,t}-T_{p,h(t)},0\right)\Delta t
+
+symbols:
+  HC: "Cumulative thermal exceedance"
+  SST_p_t: "Observed SST at point p and time t"
+  T_p_h: "Climatological threshold at point p and hour h(t)"
+  t_s: "Event start"
+  t_e: "Event end"
+  delta_t: "Sampling interval (1 hour)"
+
+output:
+  name: heat_content
+  unit: "degC h"
+  range: [0.0, 10000]
+  dimensions: [event]
+
+python: |
+  def calculate(context):
+      xp = context.xp
+
+      sst = context.sst
+      threshold = context.threshold
+
+      valid = xp.isfinite(sst) & xp.isfinite(threshold)
+
+      excess = xp.where(
+          valid,
+          xp.maximum(sst - threshold, 0.0),
+          0.0,
+      )
+
+      heat_content = context.sum(excess)
+
+      return {
+          "value": heat_content,
+      }

@@ -1,0 +1,14 @@
+{
+  "cluster_labels": null,
+  "coverage_threshold": 0.8,
+  "descriptor_rules": [],
+  "incompatible_pairs_excluded": [],
+  "method": "same point_id + positive temporal overlap; half-open event indices",
+  "minimum_temporal_iou": 0.25,
+  "selected_pairs": [
+    {
+      "run_a": "7b6805fd-6c65-406b-8916-7237c2a0b469",
+      "run_b": "4c3116a5-3774-4d9b-9a06-811504996226"
+    }
+  ]
+}

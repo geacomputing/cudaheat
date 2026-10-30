@@ -40,19 +40,19 @@ Table~\ref{tab:parameter-settings} summarizes the user-modulable settings that d
 \renewcommand{\arraystretch}{1.18}
 \rowcolors{2}{gray!12}{white}
 \begin{tabularx}{\textwidth}{@{}
+    p{0.2\textwidth}
     p{0.1\textwidth}
-    p{0.10\textwidth}
     p{0.2\textwidth}
     X
 @{}}
 \toprule
 Parameter & Default & Permitted setting & Scientific role \\
 \midrule
-\code{baseline} & \code{None} & \code{None} or \code{(start_year, end_year)} & Selects the observations used to estimate the climatological mean and percentile threshold. \\
+% \code{baseline} & \code{None} & \code{None} or \code{(start_year, end_year)} & Selects the observations used to estimate the climatological mean and percentile threshold. \\
 \code{percentile} & $0.90$ & $0<q<1$ & Defines the quantile threshold $Q_q(t,p)$. \\
-\code{calendar_mode} & \code{month_day_hour} & \code{month_day_hour} or \code{dayofyear} & Determines the assignment of timestamps to hourly climatology bins. \\
+%\code{calendar_mode} & \code{month_day_hour} & \code{month_day_hour} or \code{dayofyear} & Determines the assignment of timestamps to hourly climatology bins. \\
 \code{smooth_window_hours} & 744 h & Positive 24-h multiple within the annual cycle & Sets the same-clock-hour circular smoothing window. \\
-\code{smooth_min_periods} & 1 day & Integer from 1 to the smoothing-window length in days & Sets the minimum finite support required during smoothing. \\
+%\code{smooth_min_periods} & 1 day & Integer from 1 to the smoothing-window length in days & Sets the minimum finite support required during smoothing. \\
 \code{min_duration_hours} & 120 h & Integer $\geq 1$ & Retains candidate intervals at or above the prescribed duration. \\
 \code{max_internal_gap_hours} & 6 h & Integer $\geq 0$ & Fills bounded sub-threshold interruptions before duration filtering. \\
 \code{join_gap_hours} & 48 h & Integer $\geq 0$ & Joins neighbouring duration-qualified intervals at the same point. \\

@@ -180,23 +180,35 @@ def _write_data(path: Path, times: np.ndarray, sst: np.ndarray, threshold: np.nd
             writer.writerow([_date_text(timestamp), *["" if not np.isfinite(value) else f"{value:.8g}" for value in values]])
 
 
-def _panel_rows(metadata: Mapping[str, Any], catalogue: xr.Dataset, rules: Sequence[Any], enriched: xr.Dataset) -> list[tuple[str, str]]:
-    rows = [
-        ("Event", str(int(catalogue["event"].values[0]))),
-        ("Point", str(int(catalogue["point_index"].values[0]))),
+def _panel_rows(
+    metadata: Mapping[str, Any], catalogue: xr.Dataset, rules: Sequence[Any], enriched: xr.Dataset
+) -> tuple[list[tuple[str, str]], list[tuple[str, Any]], list[tuple[str, str]]]:
+    """Separate normalized and dimensional rule outputs for the side panel."""
+    settings = [
+        #("Event", str(int(catalogue["event"].values[0]))),
+        #("Point", str(int(catalogue["point_index"].values[0]))),
         ("Duration", _format_hours(catalogue["duration_hours"].values[0])),
         ("Baseline", _format_baseline(metadata.get("baseline"))),
         ("Percentile", _format_percentile(metadata.get("percentile"))),
-        ("Min. duration", _format_hours(metadata.get("min_duration_hours"))),
+        #("Min. duration", _format_hours(metadata.get("min_duration_hours"))),
         ("Internal gap", _format_hours(metadata.get("max_internal_gap_hours"))),
         ("Join gap", _format_hours(metadata.get("join_gap_hours"))),
     ]
+    normalized: list[tuple[str, Any]] = []
+    dimensional: list[tuple[str, str]] = []
     for rule in rules:
         if rule.output_name in enriched:
             symbol = str(rule.metadata.get("symbol") or "").strip()
             label = rf"${symbol}$" if symbol else _tex_escape(_truncate_rule_id(rule.id))
-            rows.append((label, _format_value(enriched[rule.output_name].values[0])))
-    return rows
+            output = rule.metadata.get("output", {})
+            rule_range = output.get("range", []) if isinstance(output, Mapping) else []
+            unit = str(output.get("unit", "")).strip().lower() if isinstance(output, Mapping) else ""
+            value = enriched[rule.output_name].values[0]
+            if unit in {"dimensionless", "1", "-"} and list(rule_range) == [0.0, 1.0]:
+                normalized.append((label, value))
+            else:
+                dimensional.append((label, _format_value(value)))
+    return settings, normalized, dimensional
 
 
 def _truncate_rule_id(rule_id: str, limit: int = 20) -> str:
@@ -204,12 +216,55 @@ def _truncate_rule_id(rule_id: str, limit: int = 20) -> str:
     return rule_id if len(rule_id) <= limit else f"{rule_id[:limit - 1]}…"
 
 
+def _normalized_bar_plot(rows: Sequence[tuple[str, Any]]) -> str:
+    """Create one coordinate-consistent 0--1 PGFPlots bar chart."""
+    finite_rows: list[tuple[str, float]] = []
+    for label, value in rows:
+        try:
+            fraction = float(value)
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(fraction):
+            finite_rows.append((label, min(1.0, max(0.0, fraction))))
+    if not finite_rows:
+        return r"\footnotesize\textit{No finite normalized metrics.}"
+
+    positions = ",".join(str(index) for index in range(len(finite_rows)))
+    coordinates = " ".join(
+        f"({value:.4f},{index})" for index, (_, value) in enumerate(finite_rows)
+    )
+    label_nodes = "\n".join(
+        rf"\node[anchor=east,xshift=-3pt,font=\scriptsize,text=CUDAHeatSlate] at (axis cs:0,{index}) {{{label}}};"
+        for index, (label, _) in enumerate(finite_rows)
+    )
+    height = max(1.65, 0.52 * len(finite_rows) + 0.50)
+    return rf"""
+\begin{{tikzpicture}}
+\begin{{axis}}[
+  xbar, width=\linewidth, height={height:.2f}cm,
+  xmin=0, xmax=1, xtick={{0,0.5,1}}, minor x tick num=1,
+  ytick={{{positions}}}, yticklabels={{}},
+  y dir=reverse, enlarge y limits=0.30,
+  axis x line*=bottom, axis y line=none,
+  ytick style={{draw=none}}, clip=false,
+  tick label style={{font=\scriptsize}},
+  xmajorgrids, grid style={{draw=CUDAHeatGrid}},
+  bar width=3.5pt,
+]
+\addplot[draw=none,fill=gray!60] coordinates {{{coordinates}}};
+{label_nodes}
+\end{{axis}}
+\end{{tikzpicture}}""".strip()
+
+
 def _write_tex(
     path: Path,
     data_path: Path,
     run_id: UUID,
     event_id: int,
-    rows: Sequence[tuple[str, str]],
+    settings: Sequence[tuple[str, str]],
+    normalized_rules: Sequence[tuple[str, Any]],
+    dimensional_rules: Sequence[tuple[str, str]],
     ymin: float,
     ymax: float,
     event_start: str,
@@ -220,12 +275,13 @@ def _write_tex(
 ) -> None:
     latex_data_path = data_path.relative_to(PROJECT_ROOT / "LaTex").as_posix()
     parameter_rows = "\n".join(
-        rf"\textcolor{{CUDAHeatSlate}}{{{_tex_escape(name)}}} & {_tex_escape(value)} \\" for name, value in rows[:8]
+        rf"\textcolor{{CUDAHeatSlate}}{{{_tex_escape(name)}}} & {_tex_escape(value)} \\" for name, value in settings
     )
-    rule_rows = "\n".join(
-        rf"\textcolor{{CUDAHeatSlate}}{{{name}}} & {_tex_escape(value)} \\" for name, value in rows[8:]
-    ) or r"\multicolumn{2}{@{}l@{}}{No rules evaluated.} \\"
-    label = f"{label_prefix}:{event_id}:point-{rows[1][1]}"
+    normalized_plot = _normalized_bar_plot(normalized_rules)
+    dimensional_rows = "\n".join(
+        rf"\textcolor{{CUDAHeatSlate}}{{{name}}} & {_tex_escape(value)} \\" for name, value in dimensional_rules
+    ) or r"\multicolumn{2}{@{}l@{}}{None} \\"
+    label = f"{label_prefix}:{event_id}:point-{settings[1][1]}"
     path.write_text(
         rf"""% Generated by latex_event_figure.py; requires tikz, pgfplots and class/cudaheat-colors.tex.
 \begin{{figure*}}[tbp]
@@ -258,9 +314,11 @@ def _write_tex(
 \begin{{tabular}}{{@{{}}ll@{{}}}}
 {parameter_rows}
 \end{{tabular}}
-\par\vspace{{5pt}}\textbf{{Rule outputs}}\par\vspace{{2pt}}
+\par\vspace{{5pt}}\textbf{{Normalized metrics}}\par\vspace{{2pt}}
+{normalized_plot}
+\par\vspace{{5pt}}\textbf{{Dimensional metrics}}\par\vspace{{2pt}}
 \begin{{tabular}}{{@{{}}ll@{{}}}}
-{rule_rows}
+{dimensional_rows}
 \end{{tabular}}
 \end{{minipage}}
 \caption{{Hourly SST, climatological threshold and climatological mean for CUDAHeat event {event_id} (run \texttt{{{run_id}}}).{_tex_escape(month_span_caption)}}}
@@ -295,9 +353,10 @@ def main() -> None:
     tex_path = arguments.output_directory / f"{stem}.tex"
     _write_data(data_path, times, sst, threshold, climatology)
     event_start, event_end = _date_text(times[start]), _date_text(times[stop - 1])
+    settings, normalized_rules, dimensional_rules = _panel_rows(metadata, catalogue, rules, enriched)
     _write_tex(
         tex_path, data_path, arguments.run_id, event_id,
-        _panel_rows(metadata, catalogue, rules, enriched), ymin, ymax,
+        settings, normalized_rules, dimensional_rules, ymin, ymax,
         event_start, event_end, arguments.label_prefix,
         _tick_options(times),
         _month_span_caption(event_start, event_end),

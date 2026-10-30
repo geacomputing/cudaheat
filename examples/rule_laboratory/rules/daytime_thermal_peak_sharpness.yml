@@ -1,5 +1,5 @@
 id: daytime_strong_exceedance_fraction
-version: "1.0.0"
+version: "1.0.1"
 
 short_name: Daytime strong exceedance fraction
 long_name: Fraction of daytime event hours exceeding 1.5 times the climatological threshold anomaly
@@ -103,11 +103,10 @@ python: |
           dtype=xp.float64,
       )
 
-      xp.divide(
-          strong_hours,
-          daytime_hours,
-          out=value,
-          where=daytime_hours > 0,
+      has_daytime = daytime_hours > 0
+      value[has_daytime] = (
+          strong_hours[has_daytime]
+          / daytime_hours[has_daytime]
       )
 
       return {

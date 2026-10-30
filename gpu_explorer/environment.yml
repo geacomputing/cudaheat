@@ -1,0 +1,12 @@
+name: cudaheat-gpu-explorer
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - streamlit>=1.55
+  - pydeck>=0.9
+  - sqlalchemy>=2.0
+  - psycopg>=3.2
+  - numpy>=1.26
+  - pandas>=2.1
+  - matplotlib-base>=3.8

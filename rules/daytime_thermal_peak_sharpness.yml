@@ -1,0 +1,116 @@
+id: daytime_strong_exceedance_fraction
+version: "1.0.1"
+
+short_name: Daytime strong exceedance fraction
+long_name: Fraction of daytime event hours exceeding 1.5 times the climatological threshold anomaly
+
+symbol: DSEF
+
+category:
+  primary: diurnal_cycle
+  secondary: daytime_intensity
+
+description: >
+  Fraction of valid daytime hourly SST observations during
+  a marine heatwave event exceeding 1.5 times the difference
+  between the climatological threshold and climatological mean.
+
+  Daytime is defined as 06:00–20:00 local solar time,
+  calculated from UTC timestamps and longitude.
+
+interpretation: >
+  Values approaching 1 indicate frequent strong daytime
+  thermal exceedances. Values approaching 0 indicate that
+  daytime SST rarely reaches 1.5 times the climatological
+  threshold anomaly.
+
+  This metric measures the frequency of strong daytime
+  warming rather than its absolute magnitude.
+
+formula_latex: |
+  DSEF =
+  \frac{
+    \displaystyle\sum_{t=t_s}^{t_e}
+    \mathbf{1}_{\mathrm{day}}(p,t)
+    \mathbf{1}
+    \left[
+      SST_{p,t} >
+      C_{p,h(t)} + 1.5
+      \left(T_{p,h(t)}-C_{p,h(t)}\right)
+    \right]
+    \mathbf{1}_{\mathrm{valid}}(p,t)
+  }{
+    \displaystyle\sum_{t=t_s}^{t_e}
+    \mathbf{1}_{\mathrm{day}}(p,t)
+    \mathbf{1}_{\mathrm{valid}}(p,t)
+  }
+
+symbols:
+  DSEF: "Daytime strong exceedance fraction"
+  SST_p_t: "Observed SST at point p and time t"
+  T_p_h: "Climatological percentile threshold at point p and hour h(t)"
+  C_p_h: "Climatological SST at point p and hour h(t)"
+  p: "Spatial point associated with the event"
+  t: "Hourly time index"
+  t_s: "Event start"
+  t_e: "Event end"
+  h(t): "Climatological month-day-hour corresponding to time t"
+  day: "Indicator for daytime hours"
+  valid: "Indicator for finite SST, threshold and climatology"
+
+output:
+  name: daytime_strong_exceedance_fraction
+  unit: dimensionless
+  range: [0.0, 1.0]
+  dimensions: [event]
+
+python: |
+  def calculate(context):
+      xp = context.xp
+
+      sst = context.sst
+      climatology = context.climatology
+      threshold = context.threshold
+
+      # Existing RuleContext property.
+      hours = context.local_hour
+
+      # Daytime: 06:00–20:00 local solar time.
+      day = (hours >= 6.0) & (hours < 20.0)
+
+      valid = (
+          xp.isfinite(sst)
+          & xp.isfinite(climatology)
+          & xp.isfinite(threshold)
+          & day
+      )
+
+      # Strong exceedance: 1.5 times the
+      # climatological threshold anomaly.
+      strong_threshold = (
+          climatology
+          + 1.5 * (threshold - climatology)
+      )
+
+      strong = valid & (sst > strong_threshold)
+
+      daytime_hours = context.count(valid)
+      strong_hours = context.count(strong)
+
+      value = xp.full(
+          daytime_hours.shape,
+          xp.nan,
+          dtype=xp.float64,
+      )
+
+      has_daytime = daytime_hours > 0
+      value[has_daytime] = (
+          strong_hours[has_daytime]
+          / daytime_hours[has_daytime]
+      )
+
+      return {
+          "value": value,
+          "daytime_hours": daytime_hours,
+          "strong_hours": strong_hours,
+      }

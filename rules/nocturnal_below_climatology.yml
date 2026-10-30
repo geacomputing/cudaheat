@@ -1,0 +1,98 @@
+id: nocturnal_below_climatology_fraction
+version: "1.0.1"
+
+short_name: Nocturnal below-climatology fraction
+long_name: Fraction of nighttime event hours below the climatological mean
+
+symbol: NBCF
+
+category:
+  primary: diurnal_cycle
+  secondary: nocturnal_recovery
+
+description: >
+  Fraction of valid nighttime hourly SST observations during
+  a marine heatwave event that fall below the corresponding
+  hourly climatological seasonal mean.
+
+  Nighttime is defined as 20:00–06:00 local solar time,
+  calculated from UTC timestamps and longitude.
+
+interpretation: >
+  Values approaching 1 indicate frequent nighttime SST
+  conditions cooler than the climatological seasonal mean.
+  Values approaching 0 indicate that nighttime SST generally
+  remains above normal climatological conditions.
+
+  This metric measures the frequency of nocturnal recovery
+  below climatology, not the magnitude of cooling.
+
+formula_latex: |
+  NBCF =
+  \frac{
+    \displaystyle\sum_{t=t_s}^{t_e}
+    \mathbf{1}_{\mathrm{night}}(p,t)
+    \mathbf{1}[SST_{p,t}<C_{p,h(t)}]
+    \mathbf{1}_{\mathrm{valid}}(p,t)
+  }{
+    \displaystyle\sum_{t=t_s}^{t_e}
+    \mathbf{1}_{\mathrm{night}}(p,t)
+    \mathbf{1}_{\mathrm{valid}}(p,t)
+  }
+
+symbols:
+  NBCF: "Nocturnal below-climatology fraction"
+  SST_p_t: "Observed SST at point p and time t"
+  C_p_h: "Climatological SST at point p and hour h(t)"
+  p: "Spatial point associated with the event"
+  t: "Hourly time index"
+  t_s: "Event start"
+  t_e: "Event end"
+  h(t): "Climatological month-day-hour corresponding to time t"
+  night: "Indicator for nighttime hours"
+  valid: "Indicator for finite SST and climatology"
+
+output:
+  name: nocturnal_below_climatology_fraction
+  unit: dimensionless
+  range: [0.0, 1.0]
+  dimensions: [event]
+
+python: |
+  def calculate(context):
+      xp = context.xp
+
+      sst = context.sst
+      climatology = context.climatology
+      hours = context.local_hour
+
+      night = (hours >= 20.0) | (hours < 6.0)
+
+      valid = (
+          xp.isfinite(sst)
+          & xp.isfinite(climatology)
+          & night
+      )
+
+      below = valid & (sst < climatology)
+
+      night_hours = context.count(valid)
+      below_hours = context.count(below)
+
+      value = xp.full(
+          night_hours.shape,
+          xp.nan,
+          dtype=xp.float64,
+      )
+
+      has_nighttime = night_hours > 0
+      value[has_nighttime] = (
+          below_hours[has_nighttime]
+          / night_hours[has_nighttime]
+      )
+
+      return {
+          "value": value,
+          "night_hours": night_hours,
+          "below_hours": below_hours,
+      }

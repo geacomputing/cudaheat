@@ -1,5 +1,5 @@
 id: nocturnal_below_climatology_fraction
-version: "1.0.0"
+version: "1.0.1"
 
 short_name: Nocturnal below-climatology fraction
 long_name: Fraction of nighttime event hours below the climatological mean
@@ -85,11 +85,10 @@ python: |
           dtype=xp.float64,
       )
 
-      xp.divide(
-          below_hours,
-          night_hours,
-          out=value,
-          where=night_hours > 0,
+      has_nighttime = night_hours > 0
+      value[has_nighttime] = (
+          below_hours[has_nighttime]
+          / night_hours[has_nighttime]
       )
 
       return {

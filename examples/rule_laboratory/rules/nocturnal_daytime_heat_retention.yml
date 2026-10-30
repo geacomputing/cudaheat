@@ -1,5 +1,5 @@
 id: nocturnal_daytime_heat_retention
-version: "1.0.0"
+version: "1.0.1"
 
 short_name: Nocturnal Daytime Heat Retention
 long_name: Fraction of nights exceeding the preceding daytime maximum threshold
@@ -94,9 +94,9 @@ python: |
       )
 
       # UTC timestamps expressed as consecutive hourly indices.
-      utc_hours = context.timestamps.astype(
-          "datetime64[h]"
-      ).astype("int64")
+      utc_hours = xp.asarray(
+          context.timestamps.astype("datetime64[h]").astype("int64")
+      )
 
       longitudes = context.longitude
 

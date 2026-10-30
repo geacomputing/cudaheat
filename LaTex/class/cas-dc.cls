@@ -66,6 +66,8 @@
 \RequirePackage{booktabs,makecell,multirow,array,colortbl,dcolumn,stfloats}
 \RequirePackage{xspace,xstring,footmisc}
 
+\RequirePackage{float}
+
 
 \RequirePackage{pgfplots}
 \RequirePackage{tikz}
@@ -93,6 +95,7 @@
 %
 
 \RequirePackage{cas-common}
+
 
 %
 % Specific to Single Column
